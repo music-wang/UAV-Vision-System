@@ -1,0 +1,26 @@
+# ---- Python 缓存 ----
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.mypy_cache/
+.ipynb_checkpoints/
+build/
+dist/
+*.egg-info/
+
+# ---- 虚拟环境 ----
+venv/
+.venv/
+env/
+ENV/
+virtualenv/
+
+# ---- 数据集图片 ----
+*.jpg
+
+# ---- 模型权重 ----
+*.pt
+*.onnx
+*.rknn
