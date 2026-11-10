@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """把逐帧检测结果归到 9×7 方格并去重计数（赛题基本要求 3 的核心）。
 
 链路：
@@ -157,15 +157,25 @@ class CellMapper:
         for k, t in enumerate(self.tracks):
             if not used[k]:
                 t.misses += 1
-        self.tracks = [t for t in self.tracks if t.misses <= self.max_miss]
+        # 注意：这里**不删**已确认的目标——动物一旦被看到，离开视野后仍要计入结果。
+        # 只把长期失联的丢掉，防止误检把列表撑爆。
+        if len(self.tracks) > 500:
+            self.tracks = [t for t in self.tracks if t.misses <= self.max_miss]
 
     # ---------- 结果 ----------
 
     def report(self) -> dict[str, dict[str, int]]:
         out: dict[str, dict[str, int]] = {}
-        for t in self.tracks:
+        # 同一只动物离开视野再回来后可能生成新轨迹；按"同类 + 地面距离 < 20cm"合并，
+        # 否则一只动物会被数成两三只。
+        kept: list[Track] = []
+        for t in sorted(self.tracks, key=lambda x: -x.hits):
             if t.hits < self.confirm_hits:
                 continue
+            if any(t.cls == o.cls and math.hypot(t.x - o.x, t.y - o.y) < 20.0 for o in kept):
+                continue
+            kept.append(t)
+        for t in kept:
             cell = t.best_cell()
             if cell is None:
                 continue
@@ -246,3 +256,5 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+

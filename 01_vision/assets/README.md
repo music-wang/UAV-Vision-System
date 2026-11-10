@@ -21,6 +21,8 @@
 | `terrain_preview.jpg` | 地貌图缩略图 1600×1280（文档/自检用，约 0.6 MB） |
 | `mat_render_sample.jpg` | `synth_dataset.py` 渲染的虚拟场地示例：网格 + 两条 1.8cm 黑线 + 灰色禁飞布 + 8 只动物 |
 | `synth_samples.jpg` | 6 张合成训练样本拼图（含机身偏航、光照不均、噪声、地图外地面） |
+| `predict_demo.jpg` / `predict_demo2.jpg` | 训练后的预测可视化（YOLO11n，10 轮，CPU） |
+| `mission_scene.jpg` | `sim_mission.py` 的任务场地：禁飞区 A8B2~A8B4 + 8 只动物 + 牛耕式航线
 
 重新生成：
 

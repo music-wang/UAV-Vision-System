@@ -118,7 +118,8 @@ def main() -> None:
     box = m.box
     names = getattr(m, "names", {}) or {}
     per_class = {}
-    for i, ap_i in enumerate(getattr(box, "maps", []) or []):
+    _maps = getattr(box, "maps", None)
+    for i, ap_i in enumerate([] if _maps is None else _maps):
         per_class[names.get(i, str(i))] = round(float(ap_i), 4)
 
     summary = {
@@ -155,4 +156,6 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
 
