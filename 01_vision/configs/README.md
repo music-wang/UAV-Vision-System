@@ -25,9 +25,9 @@ names: ['peacock', 'wolf', 'monkey', 'elephant', 'tiger']
 ```
 
 - `names` 与 `classes.txt` **顺序一致**（改一个必须改另一个，否则标签错位）。
-- ⚠️ `path` 是**本机绝对路径**，换机器/换目录直接失效。建议改成相对仓库的路径，
-  例如 `path: ../datasets/yolo`，数据放 `datasets/yolo/`（已 gitignore），
-  这样队友拉下来也能直接跑训练。
+- ⚠️ `path` 是**本机绝对路径**，换机器/换目录直接失效。建议改成相对仓库的路径：
+  `path: ../datasets/yolo`（相对本文件所在目录）——`scripts/synth_dataset.py` 的默认输出
+  正好是 `datasets/yolo/images/{train,val}` + `labels/{train,val}`，两者是对齐的。
 - 目录按 Ultralytics 约定：`images/{train,val}` + `labels/{train,val}`，一一对应同名 `.txt`。
 
 ## 计划加入的配置

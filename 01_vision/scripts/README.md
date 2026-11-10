@@ -1,17 +1,63 @@
 # 01_vision/scripts
 
-计划脚本清单（尚未实现）：
+| 脚本 | 状态 | 用途 |
+|---|---|---|
+| `split_templates.py` | ✅ | 把赛题《动物体态》整版图切成 15 张去底模板 + 地貌图缩略图 |
+| `synth_dataset.py` | ✅ | 渲染虚拟场地并采样相机视角，合成 YOLO 训练集 |
+| `train.py` | ⬜ | 训练入口（YOLO 系列），产出权重与指标曲线 |
+| `export.py` | ⬜ | 导出端侧格式（ONNX / RKNN / TensorRT engine） |
+| `infer_video.py` | ⬜ | 离线跑视频，输出逐帧检测与可视化，用于回归对比 |
+| `eval_map.py` | ⬜ | 固定验证集上算 mAP / 召回，防止改模型后指标悄悄退化 |
+| `calibrate.py` | ⬜ | 相机内参标定，产出 `configs/calib.yaml` |
 
-| 脚本 | 用途 |
-|---|---|
-| `split_templates.py` | **已实现**：把赛题《动物体态》整版图切成 15 张去底模板 + 地貌图缩略图 |
-| `train.py` | 训练入口（YOLO 系列），产出权重与指标曲线 |
-| `export.py` | 导出端侧格式（ONNX / RKNN / TensorRT engine） |
-| `infer_video.py` | 离线跑视频，输出逐帧检测与可视化，用于回归对比 |
-| `eval_map.py` | 在固定验证集上算 mAP / 召回，防止改模型后指标悄悄退化 |
-| `calibrate.py` | 相机内参标定，产出 `configs/calib.yaml` |
+## split_templates.py
 
-约定：
+```powershell
+python 01_vision/scripts/split_templates.py `
+  --sheet datasets/raw/动物体态.png `
+  --terrain datasets/raw/地貌图.png `
+  --out 01_vision/assets
+```
 
-- 所有脚本从 `configs/` 读参数，不硬编码路径。
-- 输出统一写到 `../runs/`（已被 `.gitignore` 忽略），不要提交训练产物。
+## synth_dataset.py
+
+```powershell
+# 正式生成（约 0.35s/张，800+100 张约 5 分钟）
+python 01_vision/scripts/synth_dataset.py --n-train 800 --n-val 100
+
+# 小批量自查：把标签画回图片，并输出整幅场地预览
+python 01_vision/scripts/synth_dataset.py --n-train 20 --n-val 5 --debug-overlay `
+  --preview datasets/yolo/mat_preview.jpg
+
+# 相机/场地参数不是默认值时手动覆盖
+python 01_vision/scripts/synth_dataset.py --fov 82 --alt 120 --size 1920x1080 --animals 10
+```
+
+输出（默认 `datasets/yolo/`，已被 `.gitignore` 忽略）：
+
+```
+datasets/yolo/
+├── images/train/*.jpg      labels/train/*.txt
+├── images/val/*.jpg        labels/val/*.txt
+├── manifest.json           # 禁飞区格号、每只动物的格号/类别/真实坐标(cm)/长度/角度
+└── mat_preview.jpg         # 传了 --preview 时才有：整幅场地渲染
+```
+
+`manifest.json` 是后面做**打点精度评测**和**地面站联调**的真值来源，别删。
+
+参数说明（都影响"像不像实拍"）：
+
+| 参数 | 默认 | 说明 |
+|---|---|---|
+| `--px-per-cm` | 10 | 场地渲染精度，10 = 1px/mm。降到 5 更快但动物更糊 |
+| `--fov` | 66 | 相机水平视场角，决定单帧看到多大范围（按你的镜头改） |
+| `--alt` | 120 | 巡航高度 cm，采样时在 ±10cm 内抖动 |
+| `--size` | 1280x960 | 输出分辨率，与训练/部署分辨率一致 |
+| `--animals` | 8 | 场地上一共贴几只动物（60 格里 5~10 只比较接近实测） |
+| `--anchor` | 0.5 | 按目标居中采样的比例，太低会导致负样本压倒性多 |
+| `--blackline-pos` | outside | 1.8cm 黑线画在 25cm 留白里（外侧）还是压在格线内侧 |
+
+## 约定
+
+- 所有脚本从命令行 / `configs/` 取参数，不硬编码本机路径。
+- 训练产物写 `runs/`、合成数据写 `datasets/`，两者都被 `.gitignore` 忽略，不要提交。

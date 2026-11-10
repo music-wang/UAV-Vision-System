@@ -36,13 +36,17 @@
 - `assets/templates/` 已从赛题附图切出 15 只动物（每类 3 姿态），去底带 alpha，长边 900px。
 - **关键发现**：地貌图里没有 50cm 网格、没有 1.8cm 黑线、没有动物贴纸，这些是赛区打印时才加的
   ——所以训练集只能**合成**，且动物是手绘插图不是照片。详见 `assets/README.md`。
+- `scripts/synth_dataset.py` 已能渲染虚拟场地并按相机几何采样出 YOLO 训练集
+  （输出 `datasets/yolo/`，附 manifest 真值），效果示例见 `assets/mat_render_sample.jpg`
+  与 `assets/synth_samples.jpg`。
 - 训练/推理代码尚未加入。
 
 ## 待办
 
 - [ ] 确定机载算力平台（Jetson / RK / 香橙派 + NPU）与相机型号，回填 `configs/`
 - [ ] 相机标定（内参 + 畸变），确定"像素 → 地图坐标"的投影链路
-- [ ] 数据集：赛题 5 类动物附图 + 实拍（喷绘布、真实光照、不同倾角）
+- [x] 用赛题 5 类动物附图 + 地貌图合成训练集（`scripts/synth_dataset.py`）
+- [ ] 补真实场地实拍（喷绘布、顶灯、不同倾角），与合成集混合训练
 - [ ] 训练与导出（ONNX / RKNN / TensorRT），确认端侧帧率
 - [ ] 逐格归并计数逻辑（格内多目标、跨帧去重）
 - [ ] 光斑检测与偏差估计
