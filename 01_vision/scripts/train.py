@@ -11,7 +11,7 @@
   summary.json     mAP / 每类 AP / 速度
   *_demo.jpg       在验证集上的预测可视化（--demo 张数）
 
-数据集来自 scripts/synth_dataset.py 合成的 datasets/yolo/，配置见 configs/data.yaml。
+数据集来自 scripts/synth_dataset.py 合成的 datasets/yolo/，配置见 configs/data_real.yaml。
 """
 from __future__ import annotations
 
@@ -72,7 +72,7 @@ def resolve_data(data_yaml: Path, here: Path) -> Path:
 def main() -> None:
     here = Path(__file__).resolve().parents[2]
     ap = argparse.ArgumentParser()
-    ap.add_argument("--data", default=str(here / "01_vision/configs/data.yaml"))
+    ap.add_argument("--data", default=str(here / "01_vision/configs/data_real.yaml"))
     ap.add_argument("--model", default="yolo11n.pt", help="预训练权重或 yaml")
     ap.add_argument("--epochs", type=int, default=60)
     ap.add_argument("--imgsz", type=int, default=640)

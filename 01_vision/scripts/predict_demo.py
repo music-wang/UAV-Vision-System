@@ -22,7 +22,7 @@ def main() -> None:
     here = Path(__file__).resolve().parents[2]
     ap = argparse.ArgumentParser()
     ap.add_argument("--weights", default=str(here / "runs/2025h_synth/weights/best.pt"))
-    ap.add_argument("--data", default=str(here / "01_vision/configs/data.yaml"),
+    ap.add_argument("--data", default=str(here / "01_vision/configs/data_real.yaml"),
                     help="用它的 path/val 作为图片目录")
     ap.add_argument("--source", default="", help="直接指定图片目录，优先于 --data")
     ap.add_argument("--imgsz", type=int, default=640)

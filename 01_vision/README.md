@@ -40,7 +40,9 @@
 - `scripts/synth_dataset.py` 已能渲染虚拟场地并按相机几何采样出 YOLO 训练集
   （输出 `datasets/yolo/`，附 manifest 真值），效果示例见 `assets/mat_render_sample.jpg`
   与 `assets/synth_samples.jpg`。
-- 训练/推理代码尚未加入。
+- **数据路线已切到实拍优先**：scripts/prepare_real.py 整理划分、scripts/check_dataset.py
+  训练前体检（某类 0 实例直接失败）、configs/data_real.yaml 为主配置。见 docs/真实数据流程.md。
+- 合成集降为辅助：scripts/synth_dataset.py（必须 --scenes，否则整个数据集只有一个场景）。
 
 ## 待办
 

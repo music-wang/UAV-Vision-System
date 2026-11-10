@@ -92,7 +92,7 @@ def main() -> None:
         if page is None or y + cell_h > margin + usable_h:        # 换页
             if page is not None:
                 pages.append(page)
-                print(f"  · 第 {len(pages)} 页已满，开新页")
+                print(f"  - 第 {len(pages)} 页已满，开新页")
             page = Image.new("RGB", (W, H), (255, 255, 255))
             x, y, row_h = margin, margin, 0
 

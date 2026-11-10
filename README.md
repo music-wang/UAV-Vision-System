@@ -6,10 +6,29 @@
 > （象 / 虎 / 狼 / 猴 / 孔雀），统计"哪一格、什么动物、几只"并实时回传地面站；
 > 巡查中激光笔垂直向下打点（轨迹即航线），结束后以 45°±5° 俯角降回红色起飞区。
 
+## 工作流（先看这条）
+
+```
+拍真实照片 → prepare_real.py 划分/统计 → check_dataset.py 体检 → train.py 训练
+           → predict_demo.py 看效果 → export.py 导出 ONNX → deploy/ 转 RKNN → 板端推理
+```
+
+| 步骤 | 命令 | 说明 |
+|---|---|---|
+| ① 整理实拍 | `python 01_vision/scripts/prepare_real.py --src D:\photos` | 8:2 划分，无标注图自动转负样本 |
+| ② 训练前体检 | `python 01_vision/scripts/check_dataset.py` | **某类 0 实例直接失败**（踩过这个坑） |
+| ③ 训练 | `python 01_vision/scripts/train.py --device 0 --epochs 150` | 300 张约 150 轮 |
+| ④ 看效果 | `python 01_vision/scripts/predict_demo.py --limit 12` | 出预测图 + 各类检出数 |
+| ⑤ 导出 | `python 01_vision/scripts/export.py --format onnx --imgsz 640` | RKNN 用这份 |
+| ⑥ 部署 | `01_vision/deploy/` | ONNX→RKNN、板端 rknnlite 推理 |
+
+合成数据是**辅助/兜底**，不是主路线：`scripts/synth_dataset.py`（必须给 `--scenes`）。
+
 ## 文档
 
 | 文件 | 内容 |
 |---|---|
+| [docs/真实数据流程.md](docs/真实数据流程.md) | **主路线**：拍什么、怎么打标、300 张怎么训、怎么验 |
 | [docs/2025H-赛题原文.md](docs/2025H-赛题原文.md) | 赛题全文转录（任务 / 要求 / 说明 / 评分） |
 | [docs/2025H-约束与验收清单.md](docs/2025H-约束与验收清单.md) | 硬指标表、推论指标、扣分点、现场流程、需求→模块映射 |
 
@@ -17,12 +36,26 @@
 
 | 目录 | 职责 | 状态 |
 |---|---|---|
-| `01_vision/` | 机载视觉：5 类动物检测、逐格归并计数、光斑落点估计 | 骨架 |
+| `01_vision/` | 机载视觉：5 类动物检测、逐格归并计数、光斑落点估计 | 训练/导出/计数已跑通 |
+| `01_vision/deploy/` | RK3588 部署：ONNX→RKNN 转换、板端 rknnlite 推理 + 解码/NMS | 板端待实测 |
 | `02_control_ros2/` | ROS 2 飞行控制：定高 120cm、航点/航线执行、45° 降落、LED | 骨架 |
 | `03_slam/` | 室内定位与建图：黑线视觉 / 雷达 / 标签等定位方案 | 骨架 |
 | `04_hardware/` | 机体、桨叶防护、激光笔与相机安装、供电与载荷 | 骨架 |
 | `05_ground_station/` | 地面站：MCU + ≥6 吋屏 + 按键，9×7 航线显示、禁飞区设置、收显/存档/回看 | 骨架（占位，可按需合并） |
-| `docs/` | 赛题、方案、测试记录、报告素材 | 已有赛题两篇 |
+| `docs/` | 赛题、真实数据流程、方案、测试记录 | 已有 3 篇 |
+
+## 数据集约定
+
+```
+datasets/                    # 已被 .gitignore 忽略，不进仓库
+├── raw/                     # 赛题附件原图（动物体态 / 地貌图）
+├── real/                    # ★ 实拍 + 手标（主训练集）
+│   ├── images/{train,val}   labels/{train,val}
+│   └── summary.json         # 每类实例数
+└── yolo_synth/              # 合成集（辅助/兜底）
+```
+
+配置：`01_vision/configs/data_real.yaml`（主）、`data_synth.yaml`（辅）。
 
 ## 硬约束速查（动手前先看）
 

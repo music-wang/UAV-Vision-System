@@ -14,21 +14,25 @@
 改类序等于换模型，必须同步重新训练/导出，否则会出现"象被报成虎"这种静默错误。
 新增类别只允许**追加**到末尾。
 
-## data.yaml —— YOLO 数据集配置（已加入）
+## 数据配置：data_real.yaml（主）/ data_synth.yaml（辅）
 
 ```yaml
-path: D:/UAV_Dataset
+# data_real.yaml —— 实拍数据集，正式训练用这个
+path: ../../datasets/real
 train: images/train
 val: images/val
 nc: 5
 names: ['peacock', 'wolf', 'monkey', 'elephant', 'tiger']
 ```
 
-- `names` 与 `classes.txt` **顺序一致**（改一个必须改另一个，否则标签错位）。
-- ⚠️ `path` 是**本机绝对路径**，换机器/换目录直接失效。建议改成相对仓库的路径：
-  `path: ../datasets/yolo`（相对本文件所在目录）——`scripts/synth_dataset.py` 的默认输出
-  正好是 `datasets/yolo/images/{train,val}` + `labels/{train,val}`，两者是对齐的。
-- 目录按 Ultralytics 约定：`images/{train,val}` + `labels/{train,val}`，一一对应同名 `.txt`。
+- **两份配置各管一条路线**：`data_real.yaml` -> `datasets/real`（实拍，主训练用）；
+  `data_synth.yaml` -> `datasets/yolo_synth`（合成，辅助/兜底）。流程见 `docs/真实数据流程.md`。
+- `path` 写**相对本文件所在目录**的路径（如 `../../datasets/real`）。注意 Ultralytics
+  会把相对 path 当成相对它的 `datasets_dir`，所以 `scripts/train.py` 会先按"相对本文件"
+  解析成绝对路径再交给训练器；直接用 `yolo train data=...` 时请写绝对路径。
+- `names` 必须与 `classes.txt` 同序（改一个必须改另一个）。
+- 目录按 Ultralytics 约定：`images/{train,val}` + `labels/{train,val}`，同名一一对应。
+- 训练前先跑 `scripts/check_dataset.py`：任何一类 0 实例都会直接失败（我们踩过这个坑）。
 
 ## 计划加入的配置
 

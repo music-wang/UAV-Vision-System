@@ -1,0 +1,13 @@
+# 合成数据集配置（辅助/兜底；正式训练请用 data_real.yaml）
+#
+# 目录由 scripts/synth_dataset.py 生成（datasets/ 已被 .gitignore 忽略）：
+#   datasets/yolo_synth/images/{train,val}/*.jpg
+#   datasets/yolo_synth/labels/{train,val}/*.txt
+#
+# path 相对本文件所在目录（01_vision/configs）；train.py 会自动转成绝对路径，
+# 因为 Ultralytics 会把相对 path 当成相对它的 datasets_dir。
+path: ../../datasets/yolo_synth
+train: images/train
+val: images/val
+nc: 5
+names: ['peacock', 'wolf', 'monkey', 'elephant', 'tiger']

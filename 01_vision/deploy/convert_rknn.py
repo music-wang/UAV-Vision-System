@@ -60,7 +60,7 @@ def main() -> None:
         n = build_calib(Path(args.calib_dir), calib_txt, args.calib_n)
         print(f"[校准] {n} 张 -> {calib_txt}")
         if n < 50:
-            print("  ⚠ 校准图少于 50 张，量化误差可能偏大")
+            print("  [!] 校准图少于 50 张，量化误差可能偏大")
 
     rknn = RKNN(verbose=True)
     print("[config] mean=[0,0,0] std=[255,255,255] RGB")

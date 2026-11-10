@@ -32,7 +32,7 @@ def main() -> None:
     ap.add_argument("--int8", action="store_true", help="需要 --data 校准集")
     ap.add_argument("--dynamic", action="store_true", help="动态 shape（RKNN 不支持）")
     ap.add_argument("--simplify", action="store_true", default=True)
-    ap.add_argument("--data", default="", help="int8 校准用 data.yaml，默认自动解析 configs/data.yaml")
+    ap.add_argument("--data", default="", help="int8 校准用 data.yaml，默认自动解析 configs/data_real.yaml")
     args = ap.parse_args()
 
     w = Path(args.weights)
@@ -52,7 +52,7 @@ def main() -> None:
     if args.int8:
         from train import resolve_data
 
-        data_yaml = Path(args.data) if args.data else here / "01_vision/configs/data.yaml"
+        data_yaml = Path(args.data) if args.data else here / "01_vision/configs/data_real.yaml"
         kwargs["data"] = str(resolve_data(data_yaml, here))
 
     from ultralytics import YOLO

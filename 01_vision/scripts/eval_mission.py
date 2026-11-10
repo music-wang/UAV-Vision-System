@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""跑通"检测 → 归格 → 去重计数"，并与场地真值对比。
+"""跑通"检测 -> 归格 -> 去重计数"，并与场地真值对比。
 
 输入：sim_mission.py 产出的 mission 目录（images/ + frames.json + gt.json）
 输出：控制台对比表 + report.json

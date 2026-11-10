@@ -6,7 +6,7 @@
     第 0~3 通道 = xywh，**已经是 640 输入下的像素坐标**（不是归一化、不是格子单位）
     第 4~8 通道 = 5 类的分数，**已经过 sigmoid**（0~1）
 也就是说 ultralytics 导出时已经把 DFL 和 sigmoid 烘进图里了，板端**不需要再解 DFL**，
-只差：转置 → 阈值筛选 → xywh→xyxy → NMS。
+只差：转置 -> 阈值筛选 -> xywh->xyxy -> NMS。
 
 用法（板端）：
   python rknn_inference.py --model best.rknn --source test.jpg
