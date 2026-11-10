@@ -185,13 +185,15 @@ def place_animals(
     blocked: set[str],
     rng: random.Random,
     style_aug: bool = True,
+    species_seq: list[str] | None = None,
 ) -> list[dict]:
     free = [(i, j) for i in range(NX) for j in range(NY) if cell_name(i, j) not in blocked]
     chosen = rng.sample(free, k=min(n, len(free)))
     placed = []
 
-    for i, j in chosen:
-        sp = rng.choice(SPECIES)
+    for idx, (i, j) in enumerate(chosen):
+        # 有 species_seq 时按序列取（保证每个场景内各类均衡），否则随机
+        sp = species_seq[idx] if species_seq and idx < len(species_seq) else rng.choice(SPECIES)
         tpl = rng.choice(templates[sp])
         len_cm = NOMINAL_LEN_CM.get(sp, DEFAULT_LEN_CM) * rng.uniform(0.85, 1.15)
         target = len_cm * px_per_cm
@@ -394,7 +396,9 @@ def main() -> None:
                     help="场地渲染精度：10 = 1px/mm（5000x4000），5 = 更快但更糊")
     ap.add_argument("--fov", type=float, default=66.0, help="相机水平视场角")
     ap.add_argument("--alt", type=float, default=120.0, help="巡航高度 cm（赛题 120±10）")
-    ap.add_argument("--animals", type=int, default=8, help="场地上贴几只动物")
+    ap.add_argument("--animals", type=int, default=8, help="每个场景贴几只动物")
+    ap.add_argument("--scenes", type=int, default=40,
+                    help="场景数：每张图重新随机禁飞区与动物布局（原来整个数据集只有 1 个场景）")
     ap.add_argument("--anchor", type=float, default=0.5, help="按目标居中采样的比例")
     ap.add_argument("--blackline-pos", choices=["outside", "inside"], default="outside")
     ap.add_argument("--no-style-aug", action="store_true",
@@ -409,79 +413,109 @@ def main() -> None:
     out_w, out_h = (int(v) for v in args.size.lower().split("x"))
     out = Path(args.out)
 
-    print(f"[1/3] 渲染虚拟场地 {MAT_W_CM}x{MAT_H_CM}cm @ {args.px_per_cm}px/cm ...")
-    mat = render_mat(Path(args.terrain), args.px_per_cm)
-    draw_grid(mat, args.px_per_cm)
-    blocked = draw_no_fly(mat, args.px_per_cm, rng)
-    draw_black_lines(mat, args.px_per_cm, args.blackline_pos)
+    print(f"[1/4] 渲染底图 {MAT_W_CM}x{MAT_H_CM}cm @ {args.px_per_cm}px/cm ...")
+    base = render_mat(Path(args.terrain), args.px_per_cm)
+    draw_grid(base, args.px_per_cm)
+    draw_black_lines(base, args.px_per_cm, args.blackline_pos)
     templates = load_templates(Path(args.templates))
-    animals = place_animals(mat, args.px_per_cm, templates, args.animals, blocked, rng,
-                            style_aug=not args.no_style_aug)
-    print(f"      禁飞区 {sorted(blocked)}，动物 {len(animals)} 只："
-          f"{ {a['species'] for a in animals} }")
+
+    # 地图外的"体育馆地面"只做一次：镜头越界看到的就是馆内地面
+    pad = 1000
+    cw, ch = base.width + 2 * pad, base.height + 2 * pad
+    luma = np.asarray(base.crop((0, 0, 800, 640)).filter(ImageFilter.GaussianBlur(3))
+                      .convert("L")).astype(np.float32)
+    luma = 148 + (luma - luma.mean()) * 0.35
+    floor = Image.fromarray(np.clip(luma, 0, 255).astype(np.uint8)).convert("RGB")
+    floor = floor.resize((cw, ch), Image.BICUBIC)
+
+    scenes = max(1, args.scenes)
+    species_seq_len = args.animals
+
+    def make_scene():
+        """一个"场景" = 一张场地：重新随机禁飞区、动物种类/位置/姿态。"""
+        mat = base.copy()
+        blocked = draw_no_fly(mat, args.px_per_cm, rng)
+        # 种类平衡：每个场景内各类均匀铺一遍再打乱，避免"这一场全是孔雀"
+        pool = (SPECIES * ((species_seq_len + len(SPECIES) - 1) // len(SPECIES)))[:species_seq_len]
+        rng.shuffle(pool)
+        animals = place_animals(mat, args.px_per_cm, templates, args.animals, blocked, rng,
+                                style_aug=not args.no_style_aug, species_seq=pool)
+        padded = floor.copy()
+        padded.paste(mat, (pad, pad))
+        return padded, animals, blocked, mat
+
+    print(f"[2/4] 场景数 {scenes}，每场景 {args.animals} 只（种类均衡），"
+          f"目标 {args.n_train}+{args.n_val} 张")
 
     if args.preview:
-        p = Path(args.preview)
-        p.parent.mkdir(parents=True, exist_ok=True)
-        mat.resize((1600, round(1600 * MAT_H_CM / MAT_W_CM)), Image.LANCZOS).save(
-            p, quality=88, optimize=True)
-        print(f"      预览 -> {p}")
+        _, _, first_blocked, first_mat = make_scene()
+        p_prev = Path(args.preview)
+        p_prev.parent.mkdir(parents=True, exist_ok=True)
+        first_mat.resize((1600, round(1600 * MAT_H_CM / MAT_W_CM)), Image.LANCZOS).save(
+            p_prev, quality=88, optimize=True)
+        print(f"      预览 -> {p_prev}（禁飞区 {sorted(first_blocked)}）")
 
-    # 地图外：铺一层"体育馆地面"。真实场地里镜头越界看到的就是馆内地面，
-    # 比把地图边缘拉伸过去更像实拍（而且打印布的边界本来就有一条硬边）。
-    pad = 1000
-    cw, ch = mat.width + 2 * pad, mat.height + 2 * pad
-    luma = np.asarray(mat.crop((0, 0, 800, 640)).filter(ImageFilter.GaussianBlur(3))
-                      .convert("L")).astype(np.float32)
-    luma = 148 + (luma - luma.mean()) * 0.35          # 浅灰地面 + 地表纹理残留
-    tile = Image.fromarray(np.clip(luma, 0, 255).astype(np.uint8)).convert("RGB")
-    mat_padded = tile.resize((cw, ch), Image.BICUBIC)
-    mat_padded.paste(mat, (pad, pad))
+    print(f"[3/4] 采样视角：FOV {args.fov}° @ {args.alt}cm -> {out_w}x{out_h}")
+    species_count: dict[str, int] = {}
+    scene_manifest: list[dict] = []
 
-    print(f"[2/3] 采样视角：FOV {args.fov}° @ {args.alt}cm -> {out_w}x{out_h}")
     for split, n in (("train", args.n_train), ("val", args.n_val)):
         img_dir = out / "images" / split
         lbl_dir = out / "labels" / split
         img_dir.mkdir(parents=True, exist_ok=True)
         lbl_dir.mkdir(parents=True, exist_ok=True)
+        per_scene = max(1, math.ceil(n / scenes))
         kept = 0
-        for k in range(n):
-            alt = args.alt + rng.uniform(-10, 10)          # 120±10cm
-            img, labels = make_sample(mat_padded, pad, animals, args.px_per_cm,
-                                      out_w, out_h, alt, args.fov, args.anchor, rng)
-            stem = f"{split}_{k:05d}"
-            if args.debug_overlay:
-                dbg = img.convert("RGB").copy()
-                d = ImageDraw.Draw(dbg)
-                for cls, cx, cy, bw, bh in labels:
-                    d.rectangle(
-                        [(cx - bw / 2) * out_w, (cy - bh / 2) * out_h,
-                         (cx + bw / 2) * out_w, (cy + bh / 2) * out_h],
-                        outline=(255, 0, 0), width=2)
-                    d.text(((cx - bw / 2) * out_w + 3, (cy - bh / 2) * out_h + 2),
-                           SPECIES[cls], fill=(255, 255, 0))
-                dbg.save(img_dir / f"{stem}.jpg", quality=92)
-            else:
-                img.convert("RGB").save(img_dir / f"{stem}.jpg", quality=92, optimize=True)
-            with open(lbl_dir / f"{stem}.txt", "w", encoding="utf-8") as f:
-                for cls, cx, cy, bw, bh in labels:
-                    f.write(f"{cls} {cx:.6f} {cy:.6f} {bw:.6f} {bh:.6f}\n")
-            kept += 1
+        for s in range(scenes):
+            if kept >= n:
+                break
+            padded, animals, blocked, _ = make_scene()
+            for a in animals:
+                species_count[a["species"]] = species_count.get(a["species"], 0) + 1
+            scene_manifest.append({"split": split, "scene": s, "no_fly": sorted(blocked),
+                                   "animals": animals})
+            for _ in range(per_scene):
+                if kept >= n:
+                    break
+                alt = args.alt + rng.uniform(-10, 10)          # 120±10cm
+                img, labels = make_sample(padded, pad, animals, args.px_per_cm,
+                                          out_w, out_h, alt, args.fov, args.anchor, rng)
+                stem = f"{split}_{kept:05d}"
+                if args.debug_overlay:
+                    dbg = img.convert("RGB").copy()
+                    d = ImageDraw.Draw(dbg)
+                    for cls, cx, cy, bw, bh in labels:
+                        d.rectangle(
+                            [(cx - bw / 2) * out_w, (cy - bh / 2) * out_h,
+                             (cx + bw / 2) * out_w, (cy + bh / 2) * out_h],
+                            outline=(255, 0, 0), width=2)
+                        d.text(((cx - bw / 2) * out_w + 3, (cy - bh / 2) * out_h + 2),
+                               SPECIES[cls], fill=(255, 255, 0))
+                    dbg.save(img_dir / f"{stem}.jpg", quality=92)
+                else:
+                    img.convert("RGB").save(img_dir / f"{stem}.jpg", quality=92, optimize=True)
+                with open(lbl_dir / f"{stem}.txt", "w", encoding="utf-8") as f:
+                    for cls, cx, cy, bw, bh in labels:
+                        f.write(f"{cls} {cx:.6f} {cy:.6f} {bw:.6f} {bh:.6f}\n")
+                kept += 1
         print(f"      {split}: {kept} 张")
 
     manifest = {
         "generated_at": dt.datetime.now().isoformat(timespec="seconds"),
         "seed": args.seed,
+        "scenes": scenes,
+        "animals_per_scene": args.animals,
         "mat_px": [round(MAT_W_CM * args.px_per_cm), round(MAT_H_CM * args.px_per_cm)],
         "px_per_cm": args.px_per_cm,
         "camera": {"fov_deg": args.fov, "alt_cm": args.alt, "size": [out_w, out_h]},
-        "no_fly_cells": sorted(blocked),
-        "animals": animals,
+        "species_placed_total": species_count,
+        "scene_list": scene_manifest,
         "species": SPECIES,
     }
     (out / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2),
                                        encoding="utf-8")
-    print(f"[3/3] manifest -> {out / 'manifest.json'}")
+    print(f"[4/4] manifest -> {out / 'manifest.json'}")
+    print(f"      各类放置总数：{species_count}")
 
 
 if __name__ == "__main__":

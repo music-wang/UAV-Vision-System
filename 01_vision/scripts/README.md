@@ -56,8 +56,9 @@ python 01_vision/scripts/split_templates.py `
 ## synth_dataset.py
 
 ```powershell
-# 正式生成（实测约 2.4s/张，800+100 张约 35 分钟）
-python 01_vision/scripts/synth_dataset.py --n-train 800 --n-val 100
+# 正式生成：--scenes 必须给足，否则整个数据集只有一个场景（见下方说明）
+# 实测约 0.5~2.5s/张，1200+150 张约 10~40 分钟
+python 01_vision/scripts/synth_dataset.py --n-train 1200 --n-val 150 --scenes 40
 
 # 小批量自查：把标签画回图片，并输出整幅场地预览
 python 01_vision/scripts/synth_dataset.py --n-train 20 --n-val 5 --debug-overlay `
