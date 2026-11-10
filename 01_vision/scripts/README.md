@@ -1,13 +1,15 @@
-# 01_vision/scripts
+﻿# 01_vision/scripts
 
 | 脚本 | 状态 | 用途 |
 |---|---|---|
 | `split_templates.py` | ✅ | 把赛题《动物体态》整版图切成 15 张去底模板 + 地貌图缩略图 |
 | `synth_dataset.py` | ✅ | 渲染虚拟场地并采样相机视角，合成 YOLO 训练集 |
-| `train.py` | ⬜ | 训练入口（YOLO 系列），产出权重与指标曲线 |
-| `export.py` | ⬜ | 导出端侧格式（ONNX / RKNN / TensorRT engine） |
+| `train.py` | ✅ | 训练 + 验证 + 预测可视化，输出 `runs/<name>/summary.json` |
+| `export.py` | ✅ | 导出 ONNX / TensorRT / OpenVINO 等部署格式 |
+| `cell_mapper.py` | ✅ | **归格计数**：像素→场地坐标→AnBm 格，按地图坐标跟踪去重（`--selftest` 可自检） |
+| `sim_mission.py` | ✅ | 按航线扫场，生成带逐帧位姿的任务序列（可离线验证整条链路） |
+| `eval_mission.py` | ✅ | 跑检测 + 归格计数，与场地真值对比，输出 `report.json` |
 | `infer_video.py` | ⬜ | 离线跑视频，输出逐帧检测与可视化，用于回归对比 |
-| `eval_map.py` | ⬜ | 固定验证集上算 mAP / 召回，防止改模型后指标悄悄退化 |
 | `calibrate.py` | ⬜ | 相机内参标定，产出 `configs/calib.yaml` |
 
 ## split_templates.py
@@ -22,7 +24,7 @@ python 01_vision/scripts/split_templates.py `
 ## synth_dataset.py
 
 ```powershell
-# 正式生成（约 0.35s/张，800+100 张约 5 分钟）
+# 正式生成（实测约 2.4s/张，800+100 张约 35 分钟）
 python 01_vision/scripts/synth_dataset.py --n-train 800 --n-val 100
 
 # 小批量自查：把标签画回图片，并输出整幅场地预览
@@ -61,3 +63,4 @@ datasets/yolo/
 
 - 所有脚本从命令行 / `configs/` 取参数，不硬编码本机路径。
 - 训练产物写 `runs/`、合成数据写 `datasets/`，两者都被 `.gitignore` 忽略，不要提交。
+
