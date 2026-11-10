@@ -17,10 +17,32 @@ env/
 ENV/
 virtualenv/
 
-# ---- 数据集图片 ----
-*.jpg
+# ---- 数据集 / 训练产物（体积大，不进库） ----
+# 说明：原来这里是 *.jpg，会把 docs/ 里的示意图、报告配图一起吞掉；改为按目录忽略
+datasets/
+runs/
+*.mp4
+*.avi
 
-# ---- 模型权重 ----
+# ---- 模型权重（改走 Release 附件） ----
 *.pt
+*.pth
 *.onnx
+*.engine
 *.rknn
+*.blob
+
+# ---- ROS 2 / colcon ----
+install/
+log/
+
+# ---- 录包 ----
+*.bag
+*.db3
+*.mcap
+
+# ---- 编辑器 / 系统 ----
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
