@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """训练 2025H 动物检测器（Ultralytics YOLO）。
 
 用法：
@@ -142,9 +142,15 @@ def main() -> None:
     print(json.dumps(summary, ensure_ascii=False, indent=2))
 
     if args.demo:
+        import yaml
+
+        cfg = yaml.safe_load(Path(data_yaml).read_text(encoding="utf-8")) or {}
+        val_dir = Path(str(cfg["path"])) / str(cfg.get("val", "images/val"))
+        if not val_dir.is_dir():
+            raise SystemExit(f"验证集目录不存在：{val_dir}（检查 data.yaml 的 path/val）")
         demo_dir = here / "runs" / f"{args.name}_demo"
         model.predict(
-            source=str(Path(args.data).resolve().parent.parent / "datasets/yolo/images/val"),
+            source=str(val_dir),
             imgsz=args.imgsz,
             conf=0.25,
             save=True,
