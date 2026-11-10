@@ -25,28 +25,43 @@ def main() -> None:
     ap.add_argument("--format", default="onnx",
                     choices=["onnx", "engine", "torchscript", "openvino", "ncnn", "rknn"])
     ap.add_argument("--imgsz", type=int, default=640)
-    ap.add_argument("--half", action="store_true")
-    ap.add_argument("--int8", action="store_true")
-    ap.add_argument("--dynamic", action="store_true")
+    ap.add_argument("--opset", type=int, default=19,
+                    help="ONNX opset；转 RKNN 时若报不支持，降到 12 或 13")
+    ap.add_argument("--batch", type=int, default=1, help="静态 batch；RKNN 只支持 1")
+    ap.add_argument("--half", action="store_true", help="FP16（RKNN 路径不要开）")
+    ap.add_argument("--int8", action="store_true", help="需要 --data 校准集")
+    ap.add_argument("--dynamic", action="store_true", help="动态 shape（RKNN 不支持）")
     ap.add_argument("--simplify", action="store_true", default=True)
+    ap.add_argument("--data", default="", help="int8 校准用 data.yaml，默认自动解析 configs/data.yaml")
     args = ap.parse_args()
 
     w = Path(args.weights)
     if not w.is_file():
         raise SystemExit(f"权重不存在：{w}（先跑 train.py）")
 
-    from ultralytics import YOLO
-
-    model = YOLO(str(w))
-    out = model.export(
+    kwargs = dict(
         format=args.format,
         imgsz=args.imgsz,
         half=args.half,
         int8=args.int8,
         dynamic=args.dynamic,
         simplify=args.simplify,
+        opset=args.opset,
+        batch=args.batch,
     )
+    if args.int8:
+        from train import resolve_data
+
+        data_yaml = Path(args.data) if args.data else here / "01_vision/configs/data.yaml"
+        kwargs["data"] = str(resolve_data(data_yaml, here))
+
+    from ultralytics import YOLO
+
+    model = YOLO(str(w))
+    out = model.export(**kwargs)
     print(f"[导出完成] {args.format} -> {out}")
+    if args.format == "onnx":
+        print("提示：转 RKNN 需要 静态 shape + batch=1；int8 量化要带 --data 校准集。")
 
 
 if __name__ == "__main__":

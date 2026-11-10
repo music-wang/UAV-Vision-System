@@ -83,10 +83,13 @@ def main() -> None:
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--patience", type=int, default=20)
     ap.add_argument("--demo", type=int, default=12, help="验证集上出几张预测图，0 = 不出")
+    ap.add_argument("--serial-scan", action="store_true",
+                    help="受限环境专用：标签缓存扫描改串行（本机正常环境不要加）")
     ap.add_argument("--cache", action="store_true", help="把图片缓存进内存（数据小时更快，800 张 1280x960 约 3GB）")
     args = ap.parse_args()
 
-    serial_scan_patch()
+    if args.serial_scan:
+        serial_scan_patch()
     from ultralytics import YOLO
 
     data_yaml = resolve_data(Path(args.data), here)
@@ -156,6 +159,7 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
 
 
 
