@@ -140,6 +140,43 @@ def load_templates(root: Path) -> dict[str, list[Image.Image]]:
     return out
 
 
+def style_augment(tpl: Image.Image, rng: random.Random) -> Image.Image:
+    """模拟"赛区打印出来的彩色动物贴纸"被相机拍到的样子。
+
+    赛题说明 1(4)：动物体态图取自赛题附图、**彩色印刷**、沿轮廓剪下贴在地图上。
+    所以这里要还原的是"打印 + 纸张 + 剪裁"的退化，而不是剪影化：
+      · 饱和度下降、打印偏色（偏黄）、γ 与对比度抖动
+      · 纸上白边（沿轮廓剪下会留下 1~3mm 纸边）
+      · 轻度失焦/网点模糊
+    """
+    rgb = tpl.convert("RGB")
+    a = tpl.getchannel("A")
+    arr = np.asarray(rgb).astype(np.float32)
+
+    sat = rng.uniform(0.55, 1.05)                   # 打印比屏幕更"灰"
+    gray = arr.mean(axis=2, keepdims=True)
+    arr = gray + (arr - gray) * sat
+    arr *= np.array([rng.uniform(0.97, 1.05), rng.uniform(0.96, 1.02),
+                     rng.uniform(0.88, 1.00)], dtype=np.float32)   # 偏暖/偏黄
+    gamma = rng.uniform(0.85, 1.20)
+    arr = 255.0 * np.clip(arr / 255.0, 0, 1) ** gamma
+    arr = np.clip(arr * rng.uniform(0.90, 1.05) + rng.uniform(-12, 12), 0, 255)
+
+    img = Image.fromarray(arr.astype(np.uint8))
+    if rng.random() < 0.5:
+        img = img.filter(ImageFilter.GaussianBlur(rng.uniform(0.3, 0.9)))
+    out = img.convert("RGBA")
+    out.putalpha(a)
+
+    if rng.random() < 0.6:                          # 沿轮廓剪下留下的纸边
+        k = rng.choice([3, 5, 7, 9])
+        grown = a.filter(ImageFilter.MaxFilter(k))
+        paper = Image.new("RGBA", tpl.size, (250, 248, 240, 255))
+        paper.putalpha(grown)
+        paper.paste(out, (0, 0), out)
+        out = paper
+    return out
+
 def place_animals(
     img: Image.Image,
     px_per_cm: float,
@@ -147,6 +184,7 @@ def place_animals(
     n: int,
     blocked: set[str],
     rng: random.Random,
+    style_aug: bool = True,
 ) -> list[dict]:
     free = [(i, j) for i in range(NX) for j in range(NY) if cell_name(i, j) not in blocked]
     chosen = rng.sample(free, k=min(n, len(free)))
@@ -160,6 +198,8 @@ def place_animals(
         scale = target / max(tpl.size)
         w, h = max(round(tpl.width * scale), 8), max(round(tpl.height * scale), 8)
         tpl = tpl.resize((w, h), Image.LANCZOS)
+        if style_aug:
+            tpl = style_augment(tpl, rng)
 
         angle = rng.uniform(0, 360)
         rot = tpl.rotate(angle, expand=True, resample=Image.BICUBIC)
@@ -357,6 +397,8 @@ def main() -> None:
     ap.add_argument("--animals", type=int, default=8, help="场地上贴几只动物")
     ap.add_argument("--anchor", type=float, default=0.5, help="按目标居中采样的比例")
     ap.add_argument("--blackline-pos", choices=["outside", "inside"], default="outside")
+    ap.add_argument("--no-style-aug", action="store_true",
+                    help="关掉打印风格增强（默认开启：降饱和/偏色/纸边/失焦）")
     ap.add_argument("--preview", default="", help="整幅场地预览图输出路径")
     ap.add_argument("--debug-overlay", action="store_true", help="把标签画回图片，用于自查")
     ap.add_argument("--seed", type=int, default=0)
@@ -373,7 +415,8 @@ def main() -> None:
     blocked = draw_no_fly(mat, args.px_per_cm, rng)
     draw_black_lines(mat, args.px_per_cm, args.blackline_pos)
     templates = load_templates(Path(args.templates))
-    animals = place_animals(mat, args.px_per_cm, templates, args.animals, blocked, rng)
+    animals = place_animals(mat, args.px_per_cm, templates, args.animals, blocked, rng,
+                            style_aug=not args.no_style_aug)
     print(f"      禁飞区 {sorted(blocked)}，动物 {len(animals)} 只："
           f"{ {a['species'] for a in animals} }")
 
@@ -443,3 +486,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

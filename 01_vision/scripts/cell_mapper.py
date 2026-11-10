@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """把逐帧检测结果归到 9×7 方格并去重计数（赛题基本要求 3 的核心）。
 
 链路：

@@ -3,12 +3,13 @@
 | 脚本 | 状态 | 用途 |
 |---|---|---|
 | `split_templates.py` | ✅ | 把赛题《动物体态》整版图切成 15 张去底模板 + 地貌图缩略图 |
-| `synth_dataset.py` | ✅ | 渲染虚拟场地并采样相机视角，合成 YOLO 训练集 |
+| `synth_dataset.py` | ✅ | 渲染虚拟场地并采样相机视角，合成 YOLO 训练集（默认带打印风格增强） |
 | `train.py` | ✅ | 训练 + 验证 + 预测可视化，输出 `runs/<name>/summary.json` |
 | `export.py` | ✅ | 导出 ONNX / TensorRT / OpenVINO 等部署格式 |
 | `cell_mapper.py` | ✅ | **归格计数**：像素→场地坐标→AnBm 格，按地图坐标跟踪去重（`--selftest` 可自检） |
 | `sim_mission.py` | ✅ | 按航线扫场，生成带逐帧位姿的任务序列（可离线验证整条链路） |
 | `verify_real.py` | ✅ | 实拍验证：真实照片 vs 手工标注的每图目标数，出误差报告 |
+| `make_print_sheet.py` | ✅ | 按赛题真实尺寸（象30cm/其余15cm）生成靶标打印页，带10cm标尺 | 实拍验证：真实照片 vs 手工标注的每图目标数，出误差报告 |
 | `predict_demo.py` | ✅ | 单独出预测图并统计检出（训练完可反复跑，不用重训） |
 | `eval_mission.py` | ✅ | 跑检测 + 归格计数，与场地真值对比，输出 `report.json` |
 | `infer_video.py` | ⬜ | 离线跑视频，输出逐帧检测与可视化，用于回归对比 |
@@ -94,6 +95,7 @@ datasets/yolo/
 
 - 所有脚本从命令行 / `configs/` 取参数，不硬编码本机路径。
 - 训练产物写 `runs/`、合成数据写 `datasets/`，两者都被 `.gitignore` 忽略，不要提交。
+
 
 
 

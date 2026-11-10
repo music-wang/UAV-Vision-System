@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """鲁班猫 4（RK3588）上的 YOLO11 推理参考实现 —— rknnlite + 手写解码/NMS。
 
 模型输出的实际情况（已用你导出的 best.onnx 实测）：
