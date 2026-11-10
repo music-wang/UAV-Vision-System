@@ -1,4 +1,4 @@
-# 01_vision — 机载视觉
+﻿# 01_vision — 机载视觉
 
 ## 职责
 
@@ -29,6 +29,7 @@
 | `configs/` | 类别表 `classes.txt`、模型与推理配置、相机内参 |
 | `scripts/` | 数据集准备、训练、导出、离线推理与评测脚本 |
 | `assets/` | 赛题附图的可用化素材：15 张去底动物模板 + 地貌图缩略图（见 `assets/README.md`） |
+| `deploy/` | RK3588（鲁班猫 4）部署：ONNX→RKNN 转换脚本 + 板端 rknnlite 推理（见 `deploy/README.md`） |
 
 ## 现状
 
@@ -50,3 +51,4 @@
 - [ ] 训练与导出（ONNX / RKNN / TensorRT），确认端侧帧率
 - [ ] 逐格归并计数逻辑（格内多目标、跨帧去重）
 - [ ] 光斑检测与偏差估计
+

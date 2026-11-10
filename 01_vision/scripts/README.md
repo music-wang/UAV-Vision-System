@@ -8,6 +8,7 @@
 | `export.py` | ✅ | 导出 ONNX / TensorRT / OpenVINO 等部署格式 |
 | `cell_mapper.py` | ✅ | **归格计数**：像素→场地坐标→AnBm 格，按地图坐标跟踪去重（`--selftest` 可自检） |
 | `sim_mission.py` | ✅ | 按航线扫场，生成带逐帧位姿的任务序列（可离线验证整条链路） |
+| `verify_real.py` | ✅ | 实拍验证：真实照片 vs 手工标注的每图目标数，出误差报告 |
 | `predict_demo.py` | ✅ | 单独出预测图并统计检出（训练完可反复跑，不用重训） |
 | `eval_mission.py` | ✅ | 跑检测 + 归格计数，与场地真值对比，输出 `report.json` |
 | `infer_video.py` | ⬜ | 离线跑视频，输出逐帧检测与可视化，用于回归对比 |
@@ -93,5 +94,6 @@ datasets/yolo/
 
 - 所有脚本从命令行 / `configs/` 取参数，不硬编码本机路径。
 - 训练产物写 `runs/`、合成数据写 `datasets/`，两者都被 `.gitignore` 忽略，不要提交。
+
 
 
