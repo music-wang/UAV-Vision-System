@@ -1,4 +1,4 @@
-﻿# 01_vision/scripts
+# 01_vision/scripts
 
 | 脚本 | 状态 | 用途 |
 |---|---|---|
@@ -11,6 +11,35 @@
 | `eval_mission.py` | ✅ | 跑检测 + 归格计数，与场地真值对比，输出 `report.json` |
 | `infer_video.py` | ⬜ | 离线跑视频，输出逐帧检测与可视化，用于回归对比 |
 | `calibrate.py` | ⬜ | 相机内参标定，产出 `configs/calib.yaml` |
+
+## 本机 GPU 正式训练（推荐）
+
+前提：装了带 CUDA 的 PyTorch（`python -c "import torch; print(torch.cuda.is_available())"` 输出 `True`），
+数据在 `datasets/yolo/`（`synth_dataset.py` 生成，已被 gitignore）。
+
+```powershell
+conda activate yolo                      # 你的 ultralytics/torch 装哪个环境就用哪个
+python -c "import torch, ultralytics; print(torch.__version__, torch.cuda.is_available(), ultralytics.__version__)"
+
+python 01_vision/scripts/train.py --device 0 --epochs 60 --batch 16 --imgsz 640 --workers 8
+```
+
+- `--batch 32` 显存够（≥12GB）再上；8GB 笔记本卡用 16，OOM 就降到 8。
+- 内存 ≥32GB 可加 `--cache`，每个 epoch 少读盘。
+- 只在受限环境（沙箱禁多进程）才需要 `--serial-scan` 和 `--workers 0`，正常本机别加。
+- 产物：`runs/2025h_synth/weights/best.pt`、`summary.json`、`runs/2025h_synth_demo/*.jpg`。
+- 参考耗时：RTX 5070 Laptop + yolo11n + 800 张，约 10~15s/epoch，60 轮约 10~15 分钟。
+
+## 导出 ONNX（给 RKNN 用）
+
+```powershell
+python 01_vision/scripts/export.py --format onnx --imgsz 640
+# RKNN 报 opset 不支持时：
+python 01_vision/scripts/export.py --format onnx --imgsz 640 --opset 12
+```
+
+默认就是 RKNN 需要的形状：**batch=1、静态 shape、simplify=True**。不要加 `--half` 或 `--dynamic`。
+需要 INT8 量化校准集时加 `--int8`（会自动把 `configs/data.yaml` 解析成绝对路径传给 ultralytics）。
 
 ## split_templates.py
 
