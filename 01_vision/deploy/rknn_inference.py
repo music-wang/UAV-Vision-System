@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import time
 from pathlib import Path
 
@@ -125,6 +126,18 @@ def draw(img: np.ndarray, dets, names) -> np.ndarray:
     return img
 
 
+def run_npu(rknn, inp: np.ndarray):
+    """显式声明 NHWC 输入。
+
+    模型元数据里布局标注有两处（内部 NHWC、原始 attrs NCHW）且不一致，
+    显式声明可消除歧义；老版本 rknnlite 不接受该参数时自动回退。
+    """
+    try:
+        return rknn.inference(inputs=[inp], data_format="nhwc")
+    except TypeError:
+        return rknn.inference(inputs=[inp])
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", required=True, help="best.rknn")
@@ -135,6 +148,7 @@ def main() -> None:
     ap.add_argument("--core", default="012", help="NPU 核心：0/1/2/012")
     ap.add_argument("--benchmark", type=int, default=0, help="重复推理 N 次测速")
     ap.add_argument("--names", default=",".join(CLASSES))
+    ap.add_argument("--json", default="", help="把检出结果写成 json，便于和 PC 端逐框对比")
     args = ap.parse_args()
 
     names = [s.strip() for s in args.names.split(",")]
@@ -160,6 +174,7 @@ def main() -> None:
         out_dir.mkdir(parents=True, exist_ok=True)
 
     total_ms = 0.0
+    results: list[dict] = []
     for i, f in enumerate(files):
         img = cv2.imread(str(f))
         if img is None:
@@ -171,7 +186,7 @@ def main() -> None:
         inp = lb[None, ...]                       # NHWC uint8，模型内部做 /255
 
         t0 = time.perf_counter()
-        out = rknn.inference(inputs=[inp])
+        out = run_npu(rknn, inp)
         dt = (time.perf_counter() - t0) * 1000
 
         n = args.benchmark if args.benchmark else 1
@@ -179,7 +194,7 @@ def main() -> None:
             ts = []
             for _ in range(n):
                 t1 = time.perf_counter()
-                rknn.inference(inputs=[inp])
+                run_npu(rknn, inp)
                 ts.append((time.perf_counter() - t1) * 1000)
             print(f"[bench] {np.mean(ts):.1f} ms/帧  ({1000 / np.mean(ts):.1f} FPS)   "
                   f"min {np.min(ts):.1f}  max {np.max(ts):.1f}")
@@ -192,7 +207,18 @@ def main() -> None:
             print(f"    {names[c]:<9} {s:.2f}  ({x1:.0f},{y1:.0f})-({x2:.0f},{y2:.0f})")
         if out_dir:
             cv2.imwrite(str(out_dir / f"{Path(f).stem}_pred.jpg"), draw(img.copy(), dets, names))
+        if args.json:
+            results.append({"image": f.name,
+                            "detections": [{"cls": names[c] if c < len(names) else str(c),
+                                            "score": round(s, 4),
+                                            "xyxy": [round(x1, 1), round(y1, 1),
+                                                     round(x2, 1), round(y2, 1)]}
+                                           for x1, y1, x2, y2, s, c in dets]})
 
+    if args.json:
+        Path(args.json).write_text(json.dumps(results, ensure_ascii=False, indent=1),
+                                   encoding="utf-8")
+        print(f"[json] {args.json}")
     if args.benchmark == 0 and len(files) > 1:
         print(f"[合计] {len(files)} 帧，平均 {total_ms / max(len(files), 1):.1f} ms/帧")
     rknn.release()
@@ -200,5 +226,6 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
 
 
