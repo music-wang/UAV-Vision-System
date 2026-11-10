@@ -4,7 +4,7 @@
 
 | 脚本 | 用途 |
 |---|---|
-| `prepare_dataset.py` | 标注格式转换、训练/验证划分、类别平衡检查 |
+| `split_templates.py` | **已实现**：把赛题《动物体态》整版图切成 15 张去底模板 + 地貌图缩略图 |
 | `train.py` | 训练入口（YOLO 系列），产出权重与指标曲线 |
 | `export.py` | 导出端侧格式（ONNX / RKNN / TensorRT engine） |
 | `infer_video.py` | 离线跑视频，输出逐帧检测与可视化，用于回归对比 |

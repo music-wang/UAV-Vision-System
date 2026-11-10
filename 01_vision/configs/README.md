@@ -14,6 +14,22 @@
 改类序等于换模型，必须同步重新训练/导出，否则会出现"象被报成虎"这种静默错误。
 新增类别只允许**追加**到末尾。
 
+## data.yaml —— YOLO 数据集配置（已加入）
+
+```yaml
+path: D:/UAV_Dataset
+train: images/train
+val: images/val
+nc: 5
+names: ['peacock', 'wolf', 'monkey', 'elephant', 'tiger']
+```
+
+- `names` 与 `classes.txt` **顺序一致**（改一个必须改另一个，否则标签错位）。
+- ⚠️ `path` 是**本机绝对路径**，换机器/换目录直接失效。建议改成相对仓库的路径，
+  例如 `path: ../datasets/yolo`，数据放 `datasets/yolo/`（已 gitignore），
+  这样队友拉下来也能直接跑训练。
+- 目录按 Ultralytics 约定：`images/{train,val}` + `labels/{train,val}`，一一对应同名 `.txt`。
+
 ## 计划加入的配置
 
 | 文件 | 用途 |
