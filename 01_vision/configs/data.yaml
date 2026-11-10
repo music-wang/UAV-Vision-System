@@ -1,4 +1,10 @@
-path: D:/UAV_Dataset
+# 数据集根目录：**相对本文件所在目录**（01_vision/configs）指向仓库根的 datasets/yolo
+# 由 scripts/synth_dataset.py 生成；datasets/ 已被 .gitignore 忽略，不进库
+#
+# 注意：Ultralytics 自己会把相对 path 解析成相对它的 datasets_dir 设置（机器相关），
+# 所以 scripts/train.py 会先把它按"相对本文件"解析成绝对路径，再写一份
+# runs/data_resolved.yaml 交给训练器。直接 `yolo train data=...` 请改用绝对路径。
+path: ../../datasets/yolo
 train: images/train
 val: images/val
 nc: 5
