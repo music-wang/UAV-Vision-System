@@ -120,3 +120,90 @@ mapper.report()   # -> {'A3B5': {'elephant': 1}, ...}
 ```
 
 这就是赛题基本要求 3 要发给地面站的"格号 + 类别 + 数量"。
+
+## 8. 板上验证清单
+
+目标：确认「这个 .rknn 在鲁班猫 4 上能加载、推理结果与 PC 一致、速度够 30fps」。
+
+### 8.0 一次配好免密（只需做一次）
+
+板子挂同一网段时先确认能通：
+
+```powershell
+ping 192.168.137.2
+ssh cat@192.168.137.2 "echo ok"     # 要输一次密码
+```
+
+把本仓库准备的部署公钥装进板子（之后所有 scp/ssh 都不再要密码）：
+
+```powershell
+type "D:\deepseek harness work space\deploy_key.pub" | ssh cat@192.168.137.2 "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys"
+
+# 验证免密
+ssh -i "D:\deepseek harness work space\_deploy_key" -o BatchMode=yes cat@192.168.137.2 "echo key-ok"
+```
+
+### 8.1 在 Ubuntu x86 上产出 .rknn
+
+```bash
+python convert_rknn.py --onnx best.onnx --out best_fp.rknn --no-quant      # 先 FP16
+python convert_rknn.py --onnx best.onnx --out best.rknn --calib-dir ~/calib --calib-n 200
+```
+
+### 8.2 一键推送 + 验证（PC 上跑）
+
+```powershell
+cd "D:\deepseek harness work space\UAV-Vision-System"
+powershell -ExecutionPolicy Bypass -File 01_vision\deploy\board_test.ps1 `
+  -Rknn "E:\best_fp16_rk3588.rknn" `
+  -Image "01_vision\assets\predict_demo.jpg"
+```
+
+脚本会自动做完：连通性 → 传文件 → 版本与 md5 校验 → 单图推理（出 json）→ 三核 benchmark，
+最后打印一张 `PASS / FAIL` 汇总表。
+
+### 8.3 手工执行（脚本挂了时的兜底）
+
+```bash
+# ① 环境：三样版本必须能对上
+cat /sys/kernel/debug/rknpu/version                     # NPU 驱动
+strings /usr/lib/librknnrt.so | grep -E "^2\.[0-9]+\.[0-9]+"   # runtime
+python3 -c "import rknnlite, sys; print(rknnlite.__file__)"    # lite
+
+# ② 文件完整性
+md5sum best_fp.rknn                                    # 与 PC 端对比
+
+# ③ 单图推理（同时产出 json 供与 PC 逐框比对）
+python3 rknn_inference.py --model best_fp.rknn --source test.jpg --json board.json
+
+# ④ 三核速度（先 warmup 再计时，避免把首次加载算进去）
+python3 rknn_inference.py --model best_fp.rknn --source test.jpg --core 012 --benchmark 200
+for c in 0 1 2; do
+  echo "--- core $c ---"
+  python3 rknn_inference.py --model best_fp.rknn --source test.jpg --core $c --benchmark 200
+done
+
+# ⑤ 是否降频
+cat /sys/class/thermal/thermal_zone*/temp
+cat /sys/kernel/debug/rknpu/load
+```
+
+### 8.4 判定标准
+
+| 检查项 | 通过标准 | 不通过怎么办 |
+|---|---|---|
+| 版本 | runtime / lite 均 ≥ 2.3.x，与转模型用的 toolkit 同版本 | 换 rknn-toolkit-lite2 版本，或回 x86 用同版本重转 |
+| md5 | 与 PC 端一致 | 重新 scp（别用二进制模式被改写的 FTP） |
+| 单图检出 | 类别/数量与 PC 上 `best.onnx` 一致（差 1 个框可接受） | 见 8.5 |
+| 速度（FP16 三核） | ≤ 40 ms/帧（≥25 fps） | 走 int8，或降到 512 输入 |
+| 速度（int8 三核） | ≤ 20 ms/帧（≥50 fps） | 检查是否只跑单核、是否降频 |
+| 温度 | benchmark 前后温差 < 10°C，未触发降频 | 加散热/风扇，缩短连续推理 |
+
+### 8.5 板端对不上 PC 时的排查顺序
+
+1. **类别全错但框对** → 几乎一定是 **BGR/RGB**（§6 第 1 条）。
+2. **框整体偏移/缩放** → letterbox 没还原，或 `data_format` 传错（`nhwc` vs `nchw`）。
+3. **全 0 检出** → 多半是 **int8 量化把 sigmoid 输出压成 0**：换 FP16 验证；
+   要 int8 就用 `export.py --format rknn` 重导（后处理进图，输出变成小张量）。
+4. **检出数量少一半** → 置信度阈值不同（PC 上 0.25，板上默认也是 0.25，检查是否被 `--conf` 改过）。
+5. **速度只有单核的 1/3** → `--core` 没生效，或模型不支持多核切分（小模型正常）。
