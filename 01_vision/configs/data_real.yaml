@@ -1,14 +1,12 @@
-# ★ 主数据集：真实拍摄 + 手工标注
+# 主数据集：真实拍摄 + 手工标注
 #
-# 目录结构（由 scripts/prepare_real.py 生成，datasets/ 已被 .gitignore 忽略）：
-#   datasets/real/images/train/*.jpg
-#   datasets/real/labels/train/*.txt     YOLO 格式：cls cx cy w h（归一化 0~1）
-#   datasets/real/images/val/*.jpg
-#   datasets/real/labels/val/*.txt
+# 本机数据放在 D:\UAV_Dataset（由 scripts/prepare_real.py 生成）：
+#   D:\UAV_Dataset\images\{train,val}\*.jpg
+#   D:\UAV_Dataset\labels\{train,val}\*.txt     YOLO: cls cx cy w h（0~1 归一化）
+#   D:\UAV_Dataset\data.yaml                    同内容副本
 #
-# path 相对本文件所在目录（01_vision/configs）；train.py 会自动转成绝对路径，
-# 因为 Ultralytics 会把相对 path 当成相对它的 datasets_dir。
-path: ../../datasets/real
+# 换机器/换目录时只改下面这一行（绝对路径 Ultralytics 能直接用）。
+path: D:/UAV_Dataset
 train: images/train
 val: images/val
 nc: 5
