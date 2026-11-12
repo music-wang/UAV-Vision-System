@@ -78,13 +78,27 @@ def nms(boxes: np.ndarray, scores: np.ndarray, iou_thr: float) -> list[int]:
 def decode(out: np.ndarray, conf_thr: float, iou_thr: float,
            ratio: float, pad: tuple[int, int], orig_hw: tuple[int, int]):
     """[1, 4+nc, N] -> [(x1,y1,x2,y2,score,cls)]，坐标已还原到原图。"""
-    # rknn.inference / onnxruntime 都可能返回 [array]，统一剥成二维
-    pred = out[0] if isinstance(out, (list, tuple)) else out
-    pred = np.squeeze(np.asarray(pred))
-    if pred.ndim != 2:
-        raise ValueError(f"期望二维输出，实际 {pred.shape}")
-    if pred.shape[0] < pred.shape[1]:          # (4+nc, N) -> (N, 4+nc)
-        pred = pred.T
+    # 两种模型都支持：
+    #   A) 单输出 [1, 4+nc, 8400]（原版 ultralytics 导出）
+    #   B) 双输出 boxes[1,4,8400] + scores[1,nc,8400]（split_output_onnx.py 拆分版，
+    #      给 int8 量化用：框和分数各自一套量化刻度，分数不会被吃掉）
+    if isinstance(out, (list, tuple)) and len(out) == 2:
+        b = np.squeeze(np.asarray(out[0])).astype(np.float32)
+        sc = np.squeeze(np.asarray(out[1])).astype(np.float32)
+        if b.ndim != 2 or sc.ndim != 2:
+            raise ValueError(f"期望二维输出，实际 {b.shape} / {sc.shape}")
+        if b.shape[0] == 4:                    # (4, N) -> (N, 4)
+            b = b.T
+        if sc.shape[0] < sc.shape[1]:          # (nc, N) -> (N, nc)
+            sc = sc.T
+        pred = np.concatenate([b, sc], axis=1)
+    else:
+        pred = out[0] if isinstance(out, (list, tuple)) else out
+        pred = np.squeeze(np.asarray(pred))
+        if pred.ndim != 2:
+            raise ValueError(f"期望二维输出，实际 {pred.shape}")
+        if pred.shape[0] < pred.shape[1]:      # (4+nc, N) -> (N, 4+nc)
+            pred = pred.T
     boxes_xywh = pred[:, :4]
     scores_all = pred[:, 4:]
     cls_id = scores_all.argmax(axis=1)
