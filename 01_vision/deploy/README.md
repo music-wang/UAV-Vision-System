@@ -230,13 +230,62 @@ exposure = 2200     gain = 30/50      # 画面偏暗，但亮度落在训练分�
 
 用脚本量化对比，而不是靠眼睛：
 
-`powershell
+```powershell
 # 训练集基线
 python 01_vision/scripts/domain_stats.py --ref D:\UAV_Dataset\images\train --n 150
 
 # 板端抓 20~30 张图放一个目录，再比
 python 01_vision/scripts/domain_stats.py --ref D:\UAV_Dataset\images\train --test D:\frames
-`
+```
 
 判定：**平均亮度、对比度、边缘密度三项都在 ±15% 以内**，说明相机设置进入了训练分布；
 某一项偏得多就对应调曝光（亮度）/光照均匀性（对比度）/对焦（边缘密度）。
+
+## 10. INT8 分数全 0 的根治：把输出拆成两个张量
+
+### 病因
+
+原模型最后一个节点是 `Concat(box[0~640px], score[0~1]) -> output0`。
+RKNN 对输出做 **per-tensor** 量化，框的量程把整张张量的 scale 撑到约 640/127≈5，
+于是分数 0.46 先除以 5 再取整就是 **0** —— 这就是 int8 下"框还在、类别分数全 0"的机制。
+FP16 没有量化，所以一切正常。
+
+### 解法（不改模型、不用 hybrid 量化）
+
+拆成两个张量，各用各的刻度：`boxes[1,4,8400]` 精度约 ±2.5px，`scores[1,5,8400]` 约 ±0.004。
+
+```powershell
+# Windows 上（一次性）
+python 01_vision/deploy/split_output_onnx.py --onnx best.onnx --verify
+# -> best_2out.onnx，输出 boxes[1,4,8400] + scores[1,5,8400]
+```
+
+脚本会用 onnxruntime 对比拆分前后的数值，**必须看到 `[OK] ... 完全一致`** 再用。
+
+```bash
+# Ubuntu 上重新转 int8
+python convert_rknn.py --onnx best_2out.onnx --out best_int8.rknn --calib-dir ~/uav/calib --calib-n 200
+
+# 建议同时出一份 FP16 作为对照基线
+python convert_rknn.py --onnx best_2out.onnx --out best_fp_2out.rknn --no-quant
+```
+
+### 板端不用改
+
+`rknn_inference.py` 会看 `rknn.inference()` 返回几个数组：1 个按单输出解码，
+2 个按 `boxes + scores` 解码。两种模型同一个命令。
+
+```bash
+python3 rknn_inference.py --model best_int8.rknn --source test.jpg --json int8.json
+python3 rknn_inference.py --model best_fp_2out.rknn --source test.jpg --json fp.json
+```
+
+### 验收
+
+| 检查 | 通过标准 |
+|---|---|
+| 分数是否恢复 | int8 输出里有 `peacock 0.8x` 这种分数，而不是全 0 |
+| 与 FP16 一致 | 同一张图 `--json` 的类别/数量相同，分数差 < 0.05 |
+| 速度 | 三核 int8 到 **12~20 ms/帧**（50~80 fps） |
+
+> 若 int8 分数仍异常，再用 `--analysis` 看逐层误差，多半是校准集太少或与场景差异太大。
