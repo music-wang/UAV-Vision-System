@@ -1,10 +1,24 @@
 # UAV-Vision-System
 
+[![最新版本](https://img.shields.io/github/v/release/music-wang/UAV-Vision-System?label=%E6%9C%80%E6%96%B0%E6%A8%A1%E5%9E%8B&color=2ea44f)](https://github.com/music-wang/UAV-Vision-System/releases/latest)
+[![mAP50-95](https://img.shields.io/badge/mAP50--95-0.730-blue)](https://github.com/music-wang/UAV-Vision-System/releases/tag/v3.0)
+
 2025 年全国大学生电子设计竞赛（TI 杯）**H 题：野生动物巡查系统**（本科组）的工程仓库。
 
 > 无人机在 450cm×350cm 的 9×7 网格地图上自主巡查，绕开 3 格禁飞区，机载视觉识别 5 类动物
 > （象 / 虎 / 狼 / 猴 / 孔雀），统计"哪一格、什么动物、几只"并实时回传地面站；
 > 巡查中激光笔垂直向下打点（轨迹即航线），结束后以 45°±5° 俯角降回红色起飞区。
+
+## 当前状态：v3.0（真实数据版）
+
+| 项目 | 值 |
+|---|---|
+| 模型 | yolo11n，5 类，输入 640 |
+| 数据 | **实拍 249 张 + 7 张纯背景负样本**（199 train / 50 val） |
+| 指标 | mAP50 **0.995** / mAP50-95 **0.730** / P 0.993 / R 0.991 |
+| 下载 | [v3.0 Release](https://github.com/music-wang/UAV-Vision-System/releases/tag/v3.0)（`best.onnx` + `best.pt` + 指标图） |
+
+**版本演进**（v1.0 跑通 → v2.0 指标虚高 → v3.0 数据可信）：见 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 工作流（先看这条）
 
@@ -28,6 +42,7 @@
 
 | 文件 | 内容 |
 |---|---|
+| [CHANGELOG.md](CHANGELOG.md) | v1.0 → v2.0 → v3.0 版本演进与指标对比 |
 | [docs/真实数据流程.md](docs/真实数据流程.md) | **主路线**：拍什么、怎么打标、300 张怎么训、怎么验 |
 | [docs/2025H-赛题原文.md](docs/2025H-赛题原文.md) | 赛题全文转录（任务 / 要求 / 说明 / 评分） |
 | [docs/2025H-约束与验收清单.md](docs/2025H-约束与验收清单.md) | 硬指标表、推论指标、扣分点、现场流程、需求→模块映射 |
