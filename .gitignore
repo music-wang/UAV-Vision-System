@@ -46,3 +46,8 @@ log/
 .idea/
 .DS_Store
 Thumbs.db
+
+# ---- ROS 2 / colcon ----
+install/
+log/
+.roslog/
