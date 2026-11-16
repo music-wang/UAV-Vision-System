@@ -22,10 +22,13 @@ HERE = Path(__file__).resolve().parents[2]
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--model", default=str(HERE / "runs/2025h_synth/weights/best.pt"))
+    ap.add_argument("--model", default=str(HERE / "runs/2025h_real_v2/weights/best.pt"),
+                    help=".pt 或 .onnx 都行；默认用 v3.0 实拍模型")
     ap.add_argument("--cam", type=int, default=0)
     ap.add_argument("--imgsz", type=int, default=640)
-    ap.add_argument("--conf", type=float, default=0.5)
+    ap.add_argument("--conf", type=float, default=0.35,
+                    help="默认 0.35（比训练的 0.25 略高，实时画面里误检更少）")
+    ap.add_argument("--save-all", action="store_true", help="每帧都存图（做数据集用）")
     args = ap.parse_args()
 
     from ultralytics import YOLO
@@ -33,7 +36,12 @@ def main() -> None:
     model = YOLO(args.model)
     cap = cv2.VideoCapture(args.cam)
     if not cap.isOpened():
-        raise SystemExit(f"打不开摄像头 {args.cam}")
+        raise SystemExit(f"打不开摄像头 {args.cam}（换 --cam 1 试试，或关掉占用摄像头的程序）")
+    # 只保留最新帧，否则移动时会一直处理排队里的旧画面
+    try:
+        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+    except Exception:            # noqa: BLE001 - 部分后端不支持
+        pass
 
     shots = HERE / "runs" / "camera_shots"
     print("运行中：q 退出，s 存图")
@@ -48,9 +56,14 @@ def main() -> None:
             ms = (time.perf_counter() - t0) * 1000
 
             n = 0 if r.boxes is None else len(r.boxes)
-            cv2.putText(r.plot(), f"{ms:.0f} ms  {1000 / max(ms, 1):.1f} FPS  objs={n}",
+            vis = r.plot()                       # 只画一次，下面的文字和显示都用这一张
+            cv2.putText(vis, f"{ms:.0f} ms  {1000 / max(ms, 1):.1f} FPS  objs={n}",
                         (10, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
-            cv2.imshow("UAV-Vision-System", r.plot())
+            cv2.imshow("UAV-Vision-System", vis)
+
+            if args.save_all:
+                shots.mkdir(parents=True, exist_ok=True)
+                cv2.imwrite(str(shots / f"frame_{int(time.time() * 1000)}.jpg"), frame)
 
             key = cv2.waitKey(1) & 0xFF
             if key == ord("q"):
@@ -58,7 +71,7 @@ def main() -> None:
             if key == ord("s"):
                 shots.mkdir(parents=True, exist_ok=True)
                 p = shots / f"shot_{int(time.time())}.jpg"
-                cv2.imwrite(str(p), r.plot())
+                cv2.imwrite(str(p), vis)
                 print(f"已保存 {p}")
     finally:
         cap.release()
