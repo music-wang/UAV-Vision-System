@@ -9,3 +9,5 @@ float32 y2            # 右下角 y
 
 float32 cx            # 框中心 x
 float32 cy            # 框中心 y
+
+uint8 class_id        # 类别序号（0~4），下游做统计/归格用这个，别用字符串比较

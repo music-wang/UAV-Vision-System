@@ -1,21 +1,36 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""YOLO11 ONNX 推理与解码（与 01_vision/deploy/rknn_inference.py 保持同一套逻辑）。
+"""YOLO11 推理与解码，两种执行后端共用同一套解码。
 
-同时支持两种导出：
+后端：
+  onnx  — onnxruntime CPU，用于 PC / Ubuntu 上调试
+  rknn  — rknnlite（RK3588 NPU），用于鲁班猫 4 实车，快 5~10 倍
+
+模型导出格式都支持：
   A) 单输出 [1, 4+nc, 8400]                       （ultralytics 原始导出）
-  B) 双输出 boxes[1,4,8400] + scores[1,5,8400]    （split_output_onnx.py 拆分版）
+  B) 双输出 boxes[1,4,8400] + scores[1,5,8400]    （split_output_onnx.py 拆分版，int8 用这个）
+
+解码逻辑与 01_vision/deploy/rknn_inference.py 完全一致。
 """
 from __future__ import annotations
 
 import cv2
 import numpy as np
-import onnxruntime as ort
 
 CLASSES = ["peacock", "wolf", "monkey", "elephant", "tiger"]
 INPUT_SIZE = 640
 PAD_COLOR = (114, 114, 114)
 
+# rknnlite 的 core_mask 常量（延迟导入，PC 上没装 rknnlite 也能 import 本模块）
+_RKNN_CORES = {
+    "0": "NPU_CORE_0",
+    "1": "NPU_CORE_1",
+    "2": "NPU_CORE_2",
+    "012": "NPU_CORE_0_1_2",
+}
+
+
+# ---------------- 预处理 / 后处理 ----------------
 
 def letterbox(img: np.ndarray, size: int = INPUT_SIZE):
     """等比缩放 + 居中填充，返回 (图, 缩放比, (dw, dh))。与 ultralytics 一致。"""
@@ -112,10 +127,16 @@ def decode(out, conf_thr: float, iou_thr: float,
     return dets
 
 
-class YoloOnnx:
-    """onnxruntime 封装：输入 BGR 帧，输出模型原始输出 + letterbox 参数。"""
+# ---------------- 后端 ----------------
+
+class OnnxBackend:
+    """onnxruntime CPU 后端（PC / Ubuntu 调试用）。输入 BGR 帧。"""
+
+    kind = "onnx"
 
     def __init__(self, model_path: str, num_threads: int = 4):
+        import onnxruntime as ort
+
         opts = ort.SessionOptions()
         opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
         opts.intra_op_num_threads = num_threads
@@ -127,7 +148,54 @@ class YoloOnnx:
     def infer(self, frame_bgr: np.ndarray):
         rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
         lb, ratio, pad = letterbox(rgb)
-        blob = lb.astype(np.float32) / 255.0
-        blob = np.transpose(blob, (2, 0, 1))[None, ...]
+        blob = np.transpose(lb.astype(np.float32) / 255.0, (2, 0, 1))[None, ...]
         outs = self.session.run(None, {self.input_name: blob})
         return outs, ratio, pad
+
+
+class RknnBackend:
+    """rknnlite 后端（RK3588 NPU）。输入 BGR 帧，内部转 RGB 后按 NHWC uint8 喂给 NPU。
+
+    模型转换时用的 mean=0/std=255，所以这里传原始 uint8 即可，不要再除 255。
+    """
+
+    kind = "rknn"
+
+    def __init__(self, model_path: str, core: str = "012"):
+        try:
+            from rknnlite.api import RKNNLite
+        except ImportError as exc:      # 板上没装 rknn_toolkit_lite2
+            raise SystemExit(
+                "缺少 rknnlite，请在板上安装 rknn_toolkit_lite2，或改用 -p backend:=onnx"
+            ) from exc
+
+        self.rknn = RKNNLite()
+        if self.rknn.load_rknn(model_path) != 0:
+            raise SystemExit(f"load_rknn 失败：{model_path}")
+        mask_name = _RKNN_CORES.get(str(core), "NPU_CORE_0_1_2")
+        if self.rknn.init_runtime(core_mask=getattr(RKNNLite, mask_name)) != 0:
+            raise SystemExit("init_runtime 失败（NPU 驱动/runtime 版本是否匹配？）")
+
+    def infer(self, frame_bgr: np.ndarray):
+        rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+        lb, ratio, pad = letterbox(rgb)
+        # 模型内部做 /255；显式声明 nhwc，避免模型元数据里 nchw/nhwc 标注不一致带来的歧义
+        outs = self.rknn.inference(inputs=[lb[None, ...]], data_format="nhwc")
+        return outs, ratio, pad
+
+    def release(self):
+        try:
+            self.rknn.release()
+        except Exception:               # noqa: BLE001 - 退出阶段不抛
+            pass
+
+
+def create_backend(kind: str, model_path: str, num_threads: int = 4, rknn_core: str = "012"):
+    """按名字创建后端；未知名字回落到 onnx。"""
+    if str(kind).lower() == "rknn":
+        return RknnBackend(model_path, core=rknn_core)
+    return OnnxBackend(model_path, num_threads=num_threads)
+
+
+# 兼容旧名字
+YoloOnnx = OnnxBackend

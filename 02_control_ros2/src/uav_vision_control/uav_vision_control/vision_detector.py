@@ -2,13 +2,18 @@
 # -*- coding: utf-8 -*-
 """视觉检测节点：USB 摄像头 -> YOLO11(ONNX) -> /vision/detection。
 
-运行：
+运行（PC 调试，onnxruntime）：
   ros2 run uav_vision_control vision_detector --ros-args \
-      -p model_path:=/home/andy/uav/best_2out.onnx \
-      -p video_source:=0
+      -p model_path:=/home/andy/uav/best_2out.onnx -p video_source:=0
+
+运行（鲁班猫 4，NPU）：
+  ros2 run uav_vision_control vision_detector --ros-args \
+      -p backend:=rknn -p model_path:=/home/cat/uav/best_int8.rknn -p video_source:=0
 
 参数：
-  model_path     str   必需，ONNX 路径（单输出或 boxes/scores 双输出都支持）
+  backend        str   onnx | rknn，默认 onnx（板上用 rknn 走 NPU）
+  model_path     str   必需，.onnx 或 .rknn 路径（单输出/双输出都支持）
+  rknn_core      str   rknn 后端的 NPU 核心：0/1/2/012，默认 012（三核）
   classes_path   str   可选，每行一个类别名；默认内置 5 类
   video_source   str   摄像头序号 "0" / 视频文件 / 图片路径（图片用于离线调试）
   conf_threshold float 置信度阈值，默认 0.25
@@ -26,7 +31,7 @@ import rclpy
 from rclpy.node import Node
 from uav_vision_interfaces.msg import Detection, DetectionArray
 
-from .yolo_onnx import CLASSES, YoloOnnx, decode
+from .yolo_onnx import CLASSES, create_backend, decode
 
 IMAGE_EXTS = (".jpg", ".jpeg", ".png", ".bmp")
 
@@ -48,16 +53,24 @@ class VisionDetector(Node):
         if not model_path or not os.path.isfile(model_path):
             raise SystemExit(
                 f"模型不存在：{model_path!r}\n"
-                "请用 -p model_path:=/绝对路径/best.onnx 指定（支持单输出和 boxes/scores 双输出）")
+                "onnx 后端传 .onnx（用 -p backend:=onnx）；"
+                "板上用 -p backend:=rknn 并传 .rknn")
 
         self.conf = float(self.get_parameter("conf_threshold").value)
         self.iou = float(self.get_parameter("iou_threshold").value)
         self.frame_id = self.get_parameter("frame_id").value
         self.classes = self._load_classes(self.get_parameter("classes_path").value)
 
-        self.get_logger().info(f"加载模型：{model_path}")
-        self.model = YoloOnnx(model_path,
-                              num_threads=int(self.get_parameter("num_threads").value))
+        backend = str(self.get_parameter("backend").value).lower()
+        model_path = str(model_path)
+        if backend == "rknn" and not model_path.lower().endswith(".rknn"):
+            self.get_logger().warning(f"backend=rknn 但模型不是 .rknn：{model_path}")
+        self.get_logger().info(f"加载模型（backend={backend}）：{model_path}")
+        self.backend = backend
+        self.model = create_backend(
+            backend, model_path,
+            num_threads=int(self.get_parameter("num_threads").value),
+            rknn_core=str(self.get_parameter("rknn_core").value))
 
         self._open_source(str(self.get_parameter("video_source").value))
 
@@ -103,6 +116,12 @@ class VisionDetector(Node):
             self.capture.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
             self.capture.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
             self.capture.set(cv2.CAP_PROP_FPS, 30)
+            # 只保留最新一帧：否则 10Hz 轮询 30fps 相机会一直读到排队里的旧帧，
+            # 无人机移动时检测坐标会明显滞后
+            try:
+                self.capture.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+            except Exception:       # noqa: BLE001 - 某些后端不支持该属性
+                pass
             self.get_logger().info(f"摄像头 {cam_id} 已打开")
         else:
             self.capture = cv2.VideoCapture(src)
@@ -130,8 +149,11 @@ class VisionDetector(Node):
         msg = DetectionArray()
         msg.header.stamp = self.get_clock().now().to_msg()
         msg.header.frame_id = self.frame_id
+        msg.image_width = int(w)
+        msg.image_height = int(h)
         for x1, y1, x2, y2, score, cls_id in dets:
             det = Detection()
+            det.class_id = cls_id
             det.label = self.classes[cls_id] if cls_id < len(self.classes) else str(cls_id)
             det.confidence = score
             det.x1, det.y1, det.x2, det.y2 = x1, y1, x2, y2
@@ -153,6 +175,8 @@ class VisionDetector(Node):
     def destroy_node(self):
         if self.capture is not None:
             self.capture.release()
+        if hasattr(self.model, "release"):
+            self.model.release()
         super().destroy_node()
 
 
