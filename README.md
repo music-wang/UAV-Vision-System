@@ -20,6 +20,11 @@
 
 **版本演进**（v1.0 跑通 → v2.0 指标虚高 → v3.0 数据可信）：见 [CHANGELOG.md](CHANGELOG.md)。
 
+> **跑脚本前看这里**：这台机器上 python 默认指向没装 ultralytics 的 3.13，
+> 训练环境是 conda yolo（Python 3.11 + torch cu128）。用仓库根目录的 
+un.ps1
+> 会自动选对解释器：.un.ps1 01_vision/scripts/camera_demo.py
+
 ## 工作流（先看这条）
 
 ```
