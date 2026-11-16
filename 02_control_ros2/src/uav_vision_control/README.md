@@ -103,3 +103,69 @@ detections:
 - 相机打开后设了 `CAP_PROP_BUFFERSIZE=1`，只保留最新帧——否则 10 Hz 轮询 30 fps 相机会一直
   读到排队旧帧，无人机移动时坐标会明显滞后。
 - 摄像头打不开时检查 `ls -l /dev/video*` 和当前用户是否在 `video` 组。
+
+## 归格计数节点：`cell_mapper_node`
+
+把 `/vision/detection` 和 `/uav/pose` 合起来，输出赛题基本要求 3 要的「格号 + 类别 + 数量」。
+
+```
+/vision/detection ─┐
+                   ├─► cell_mapper_node ─► /vision/cells (CellReport)
+/uav/pose ─────────┘
+```
+
+```bash
+# 和检测节点一起起
+ros2 launch uav_vision_control mission.launch.py \
+    backend:=rknn model_path:=$HOME/uav/best_int8.rknn video_source:=0
+
+# 或者单独起（检测节点已在跑）
+ros2 run uav_vision_control cell_mapper_node --ros-args -p fov_deg:=66.0
+
+# 每次起飞前清空统计
+ros2 service call /cell_mapper_node/reset std_srvs/srv/Trigger
+```
+
+| 参数 | 默认 | 说明 |
+|---|---|---|
+| `fov_deg` | `66.0` | 相机水平视场角，决定像素→地面的换算比例 |
+| `alt_default_cm` | `120.0` | 位姿里没给高度时用这个（赛题 120±10） |
+| `match_cm` | `25.0` | 同一目标的地面距离阈值，用于跨帧去重 |
+| `confirm_hits` | `3` | 至少被看到几帧才算确认（防误检） |
+| `max_miss` | `3` | 连续丢几帧后允许新建轨迹 |
+| `min_conf` | `0.25` | 低于此置信度的框不参与归格 |
+| `pose_timeout` | `0.5` | 位姿超过这么久没更新就跳过该帧 |
+| `publish_rate` | `2.0` | `/vision/cells` 发布频率 Hz |
+
+### 位姿约定（`UavPose`）
+
+| 字段 | 含义 |
+|---|---|
+| `x_cm` / `y_cm` | 场地坐标，原点 = 喷绘布左上角，y 向下为正 |
+| `yaw_deg` | 机身偏航角，与「图像逆时针为正」一致 |
+| `alt_cm` | 离地高度，≤1 时回落到 `alt_default_cm` |
+| `valid` | false 时该帧不参与归格 |
+
+### 两个边界处理
+
+1. **没有新鲜位姿就不归格**：宁可少统计，也不把目标算到错误的格子里（日志会节流提示）。
+2. **图像尺寸变化会重建统计**：换相机/分辨率时 `image_width/height` 变了，节点会清空并从零累计，
+   同时打一条 warning——比赛现场不要中途换分辨率。
+
+### 输出示例
+
+```
+$ ros2 topic echo /vision/cells --once
+header: {frame_id: camera}
+served_frames: 62
+confirmed_cells: 3
+cells:
+- {cell: A3B5, class_id: 3, label: elephant, count: 1, mean_confidence: 0.88}
+- {cell: A4B4, class_id: 1, label: wolf,     count: 1, mean_confidence: 0.91}
+totals:
+- {cell: '', class_id: 3, label: elephant, count: 1, mean_confidence: 0.0}
+- {cell: '', class_id: 1, label: wolf,     count: 1, mean_confidence: 0.0}
+```
+
+> `cell_mapper.py` 是 `01_vision/scripts/cell_mapper.py` 的副本（板端只部署 ROS 工作空间，
+> 无法跨目录 import）。改动请先改 `01_vision/scripts` 下那份，再复制过来。

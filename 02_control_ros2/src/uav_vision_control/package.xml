@@ -9,6 +9,7 @@
 
   <depend>rclpy</depend>
   <depend>std_msgs</depend>
+  <depend>std_srvs</depend>
   <depend>uav_vision_interfaces</depend>
 
   <exec_depend>python3-numpy</exec_depend>

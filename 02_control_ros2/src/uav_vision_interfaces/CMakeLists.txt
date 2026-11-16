@@ -8,6 +8,9 @@ find_package(rosidl_default_generators REQUIRED)
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/Detection.msg"
   "msg/DetectionArray.msg"
+  "msg/CellCount.msg"
+  "msg/CellReport.msg"
+  "msg/UavPose.msg"
   DEPENDENCIES std_msgs
 )
 

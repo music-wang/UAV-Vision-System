@@ -164,18 +164,33 @@ class CellMapper:
 
     # ---------- 结果 ----------
 
-    def report(self) -> dict[str, dict[str, int]]:
-        out: dict[str, dict[str, int]] = {}
-        # 同一只动物离开视野再回来后可能生成新轨迹；按"同类 + 地面距离 < 20cm"合并，
-        # 否则一只动物会被数成两三只。
+    def _select(self) -> list[Track]:
+        """筛出已确认、且去掉重复轨迹后的目标列表。
+
+        同一只动物离开视野再回来后可能生成新轨迹；按"同类 + 地面距离 < 20cm"合并，
+        否则一只动物会被数成两三只。
+        """
         kept: list[Track] = []
         for t in sorted(self.tracks, key=lambda x: -x.hits):
-            if t.hits < self.confirm_hits:
+            if t.hits < self.confirm_hits or t.best_cell() is None:
                 continue
             if any(t.cls == o.cls and math.hypot(t.x - o.x, t.y - o.y) < 20.0 for o in kept):
                 continue
             kept.append(t)
-        for t in kept:
+        return kept
+
+    def report_detail(self) -> list[tuple[str, str, int, float]]:
+        """[(格号, 类别名, 只数=1, 平均置信度)] —— 给 ROS 节点填 CellCount 用。"""
+        out = []
+        for t in self._select():
+            cell = t.best_cell()
+            sp = SPECIES[t.cls] if 0 <= t.cls < len(SPECIES) else str(t.cls)
+            out.append((cell, sp, 1, t.mean_conf))
+        return out
+
+    def report(self) -> dict[str, dict[str, int]]:
+        out: dict[str, dict[str, int]] = {}
+        for t in self._select():
             cell = t.best_cell()
             if cell is None:
                 continue
