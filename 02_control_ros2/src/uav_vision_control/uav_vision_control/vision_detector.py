@@ -40,6 +40,8 @@ class VisionDetector(Node):
     def __init__(self):
         super().__init__("vision_detector")
 
+        self.declare_parameter("backend", "onnx")
+        self.declare_parameter("rknn_core", "012")
         self.declare_parameter("model_path", "")
         self.declare_parameter("classes_path", "")
         self.declare_parameter("video_source", "0")
