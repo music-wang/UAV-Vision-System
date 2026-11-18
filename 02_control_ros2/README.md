@@ -21,14 +21,19 @@
 
 ## 建议话题（草案，随实现调整）
 
-| 话题 | 类型 | 说明 |
-|---|---|---|
-| `/uav/pose` | `geometry_msgs/PoseStamped` | 融合后位姿 |
-| `/uav/setpoint` | `geometry_msgs/PoseStamped` | 位置目标 |
-| `/mission/route` | 自定义 `Route` | 航线（含禁飞区） |
-| `/mission/state` | 自定义 `MissionState` | 进度/模式 |
-| `/vision/detection` | 自定义 `DetectionArray` | 检测结果 |
-| `/gs/event` | 自定义 `AnimalEvent` | 上报地面站的事件 |
+| 话题 | 类型 | 方向 | 说明 |
+|---|---|---|---|
+| `/vision/detection` | `uav_vision_interfaces/DetectionArray` | 入 | 检测结果（含 `class_id`、`image_width/height`） |
+| `/vision/cells` | `uav_vision_interfaces/CellReport` | 内部 | 逐格计数，`cell_mapper_node` 输出 |
+| `/uav/pose` | `uav_vision_interfaces/UavPose` | 入 | 场地坐标位姿，`cell_mapper_node` 用；**当前无节点发布**（03_slam 待做） |
+| `/gcs/command` | `uav_vision_interfaces/GcsCommand` | 入 | 地面站命令，`serial_bridge` 解析串口后发布 |
+| `/fmu/in/trajectory_setpoint` | `px4_msgs/TrajectorySetpoint` | 出 | Offboard 速度指令（NED） |
+| `/fmu/in/offboard_control_mode` | `px4_msgs/OffboardControlMode` | 出 | 心跳，断流会触发 PX4 失效保护 |
+| `/fmu/in/vehicle_command` | `px4_msgs/VehicleCommand` | 出 | 切 Offboard / 解锁 |
+| `/fmu/out/vehicle_status`、`/fmu/out/vehicle_local_position` | `px4_msgs` | 入 | 飞控状态与位置 |
+
+服务：`/flight_control/start`（`std_srvs/Trigger`，启动安全起飞序列）、
+`/cell_mapper_node/reset`（`std_srvs/Trigger`，清空逐格统计）。
 
 ## 关键点
 
@@ -39,12 +44,20 @@
 
 ## 现状
 
-骨架，无代码。
+三个包，PC 上可编译、可运行（**尚未上机联飞**）：
+
+| 包 | 内容 |
+|---|---|
+| `uav_vision_interfaces` | 自定义消息：`Detection` / `DetectionArray` / `CellCount` / `CellReport` / `UavPose` / `GcsCommand` |
+| `uav_vision_control` | `vision_detector`（onnx / rknn 双后端）、`cell_mapper_node`（逐格计数）、`serial_bridge`（地面站串口） |
+| `uav_flight_control` | PX4 uXRCE-DDS：30Hz 心跳 + 速度 setpoint + 安全起飞序列（依赖 `px4_msgs`，需按固件版本 clone） |
 
 ## 待办
 
-- [ ] 选定飞控（PX4 还是 ArduPilot）与机载计算机，跑通 MAVROS/DDS 桥接
+- [x] 选定 PX4 + uXRCE-DDS（不用 MAVROS），飞控节点已写
+- [ ] 实机跑通 uXRCE-DDS（pixhawk + MicroXRCEAgent），确认 `/fmu/*` 话题
 - [ ] 定高环调参（120cm，气垫效应与地面效应）
 - [ ] 航线执行器 + 禁飞区绕行
 - [ ] 45° 斜降轨迹与落点精度验证
 - [ ] LED 灯效
+- [ ] `/uav/pose` 真实来源（`03_slam`）接入，打通"检测 → 归格"链路

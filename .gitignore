@@ -35,6 +35,7 @@ runs/
 # ---- ROS 2 / colcon ----
 install/
 log/
+.roslog/
 
 # ---- 录包 ----
 *.bag
@@ -46,8 +47,3 @@ log/
 .idea/
 .DS_Store
 Thumbs.db
-
-# ---- ROS 2 / colcon ----
-install/
-log/
-.roslog/

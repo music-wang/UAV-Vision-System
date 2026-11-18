@@ -21,9 +21,8 @@
 **版本演进**（v1.0 跑通 → v2.0 指标虚高 → v3.0 数据可信）：见 [CHANGELOG.md](CHANGELOG.md)。
 
 > **跑脚本前看这里**：这台机器上 python 默认指向没装 ultralytics 的 3.13，
-> 训练环境是 conda yolo（Python 3.11 + torch cu128）。用仓库根目录的 
-un.ps1
-> 会自动选对解释器：.un.ps1 01_vision/scripts/camera_demo.py
+> 训练环境是 conda yolo（Python 3.11 + torch cu128）。用仓库根目录的 `run.ps1`
+> 会自动选对解释器：`.\run.ps1 01_vision/scripts/camera_demo.py`
 
 ## 工作流（先看这条）
 
@@ -62,7 +61,7 @@ un.ps1
 | `03_slam/` | 室内定位与建图：黑线视觉 / 雷达 / 标签等定位方案 | 骨架 |
 | `04_hardware/` | 机体、桨叶防护、激光笔与相机安装、供电与载荷 | 骨架 |
 | `05_ground_station/` | 地面站：MCU + ≥6 吋屏 + 按键，9×7 航线显示、禁飞区设置、收显/存档/回看 | 协议 v1 定稿 + 模拟器 |
-| `docs/` | 赛题、真实数据流程、方案、测试记录 | 已有 3 篇 |
+| `docs/` | 赛题、真实数据流程、方案、测试记录 | 已有 4 篇 |
 
 ## 数据集约定
 

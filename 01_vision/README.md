@@ -1,4 +1,4 @@
-﻿# 01_vision — 机载视觉
+# 01_vision — 机载视觉
 
 ## 职责
 
@@ -40,17 +40,19 @@
 - `scripts/synth_dataset.py` 已能渲染虚拟场地并按相机几何采样出 YOLO 训练集
   （输出 `datasets/yolo/`，附 manifest 真值），效果示例见 `assets/mat_render_sample.jpg`
   与 `assets/synth_samples.jpg`。
-- **数据路线已切到实拍优先**：scripts/prepare_real.py 整理划分、scripts/check_dataset.py
-  训练前体检（某类 0 实例直接失败）、configs/data_real.yaml 为主配置。见 docs/真实数据流程.md。
+- **数据路线已切到实拍优先**：v3.0 用 249 张实拍 + 7 张负样本训练（mAP50 0.995 / mAP50-95 0.730），
+  见 `docs/RELEASE_v3.0.md` 与 `docs/真实数据流程.md`。
+- **计数与上报已接进 ROS 2**：`02_control_ros2` 的 `cell_mapper_node` 把检测归到 `AnBm` 格，
+  `serial_bridge` 按协议 v1 发给地面站。
 - 合成集降为辅助：scripts/synth_dataset.py（必须 --scenes，否则整个数据集只有一个场景）。
 
 ## 待办
 
-- [ ] 确定机载算力平台（Jetson / RK / 香橙派 + NPU）与相机型号，回填 `configs/`
+- [x] 机载算力平台定为鲁班猫 4（RK3588 NPU）；相机型号待回填 `configs/`
 - [ ] 相机标定（内参 + 畸变），确定"像素 → 地图坐标"的投影链路
 - [x] 用赛题 5 类动物附图 + 地貌图合成训练集（`scripts/synth_dataset.py`）
-- [ ] 补真实场地实拍（喷绘布、顶灯、不同倾角），与合成集混合训练
-- [ ] 训练与导出（ONNX / RKNN / TensorRT），确认端侧帧率
-- [ ] 逐格归并计数逻辑（格内多目标、跨帧去重）
+- [x] 补真实场地实拍（v3.0：249 张实拍 + 7 张负样本，mAP50-95 0.730）
+- [x] 训练与导出（ONNX 已出、RKNN 已转；**板端帧率待实测**）
+- [x] 逐格归并计数逻辑（`scripts/cell_mapper.py` + ROS `cell_mapper_node`）
 - [ ] 光斑检测与偏差估计
 
