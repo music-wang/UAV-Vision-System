@@ -30,6 +30,7 @@ setup(
         'console_scripts': [
             'vision_detector = uav_vision_control.vision_detector:main',
             'cell_mapper_node = uav_vision_control.cell_mapper_node:main',
+            'serial_bridge = uav_vision_control.serial_bridge_node:main',
         ],
     },
 )

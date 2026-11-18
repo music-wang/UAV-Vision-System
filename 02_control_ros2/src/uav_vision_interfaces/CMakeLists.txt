@@ -11,6 +11,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/CellCount.msg"
   "msg/CellReport.msg"
   "msg/UavPose.msg"
+  "msg/GcsCommand.msg"
   DEPENDENCIES std_msgs
 )
 
