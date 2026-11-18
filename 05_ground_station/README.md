@@ -151,6 +151,90 @@ $CMD,<NAME>,<ARG>*<crc>\n
 - EV 帧平均 25 字节，115200 下约 4.6 ms/帧；一分钟最多约 200 条事件足够用。
 - 地面站按 `(cell, cls)` 存表，`cnt` 用**覆盖**而不是累加（机载发的是累计值）。
 
+## 联调（没有单片机时）
+
+`scripts/gcs_sim.py` 就是"假单片机"：它收 EV/ACK、维护事件表、发 CMD 并按约定等 ACK，
+**协议用的是机载侧同一份 `serial_proto.py`**，所以不会出现两边 CRC 不一致。
+
+### ① 零硬件自测（先做这个 30 秒）
+
+```powershell
+python 05_ground_station/scripts/gcs_sim.py --self-test
+```
+
+会打印本文上面那张测试向量表并逐条比对，全 `OK` 且最后出现 `[PASS]` 才继续。
+
+### ② 本机虚拟串口（Linux / 板端，推荐，不用装 socat）
+
+```bash
+python3 05_ground_station/scripts/gcs_sim.py --loopback
+# [OK] 本机虚拟串口：/dev/pts/3
+#      让机载节点连这个路径：
+#       ros2 run uav_vision_control serial_bridge --ros-args -p port:=/dev/pts/3
+```
+
+另开一个终端，把上面那行 `serial_bridge` 跑起来，两边就通了。敲 `t` 发 TAKEOFF，
+机载侧会回 ACK，本脚本打印 `[OK] TAKEOFF 已确认`。
+
+### ③ socat 手工建串口对（Linux）
+
+```bash
+sudo apt install socat
+socat -d -d pty,raw,echo=0,link=/tmp/ttyGCS pty,raw,echo=0,link=/tmp/ttyUAV
+
+# 终端 A（机载侧）
+ros2 run uav_vision_control serial_bridge --ros-args -p port:=/tmp/ttyUAV
+# 终端 B（地面站模拟）
+python3 05_ground_station/scripts/gcs_sim.py --port /tmp/ttyGCS
+```
+
+### ④ Windows：com0com
+
+装 [com0com](https://sourceforge.net/projects/com0com/)，建一对（如 `COM10 <-> COM11`），
+`gcs_sim.py --port COM11`。另一端 `COM10` 给机载节点——但 ROS 2 一般跑在 Linux，
+Windows 这边通常只用来做 `--self-test` 和看帧格式。
+
+### 交互与自动化
+
+| 按键 | 作用 |
+|---|---|
+| `t` / `e` / `l` / `r` / `p` | 发 TAKEOFF / ESTOP / LAND / RESET / PING |
+| `s` | 打印事件表与汇总 |
+| `q` | 退出（退出时自动打统计与汇总） |
+
+```bash
+# 自动跑一遍流程：2 秒后起飞，15 秒后降落
+python3 gcs_sim.py --loopback --auto --auto-land 15
+```
+
+### 期望输出
+
+```
+[OK] 本机虚拟串口：/dev/pts/3
+[TX] b'$CMD,TAKEOFF,0*66\n'
+[RX] ACK TAKEOFF（无待确认命令）        ← 机载侧回了 ACK
+[OK] TAKEOFF 已确认（第 1 次发送）
+[RX] #1    A3B5 elephant ×1 (conf 0.88)
+[RX] #2    A1B7 peacock ×2 (conf 0.91)
+[RX] #4    A9B3 tiger ×5 (conf 0.70)
+```
+
+`s` 打印：
+
+```
+---- 事件表（格号 / 类别 / 数量 / 置信度）----
+   A1B7  peacock   ×2   conf=0.91
+   A3B5  elephant  ×1   conf=0.88
+   A9B3  tiger     ×5   conf=0.70
+   汇总: peacock×2  elephant×1  tiger×5
+   序号 last=4 丢帧=0 重复=1
+```
+
+### 换真单片机时改什么
+
+**什么都不用改**：把 `--port` 从虚拟串口换成真实串口（`/dev/ttyUSB0`）即可，
+协议、重发、表格逻辑全部不变。
+
 ## 界面草图（待画）
 
 ```
@@ -179,3 +263,4 @@ $CMD,<NAME>,<ARG>*<crc>\n
 - [ ] 事件表存储与回看界面
 - [x] 协议定稿（v1；CRC-8 标准校验 `"123456789" -> 0xF4`）
 - [ ] 单片机侧按 v1 写解析/组帧，先用测试向量对拍
+- [x] 地面站模拟器 scripts/gcs_sim.py（自测 / loopback / socat / com0com）
