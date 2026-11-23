@@ -52,11 +52,22 @@ from std_srvs.srv import Trigger
 from uav_vision_interfaces.msg import DetectionArray
 
 # PX4 常量（写死数字，避免不同版本 px4_msgs 里常量名差异导致编译不过）
+# 来源：PX4-Autopilot release/1.17
+#   src/modules/commander/px4_custom_mode.h   enum PX4_CUSTOM_MAIN_MODE
+#   msg/VehicleStatus.msg                     ARMING_STATE_ARMED / NAVIGATION_STATE_OFFBOARD
+#   msg/VehicleCommand.msg                    VEHICLE_CMD_*
 ARMING_STATE_ARMED = 2
 NAV_STATE_OFFBOARD = 14
 VEHICLE_CMD_DO_SET_MODE = 176
 VEHICLE_CMD_COMPONENT_ARM_DISARM = 400
-PX4_CUSTOM_MAIN_MODE_OFFBOARD = 22
+# 注意：这个值不在 px4_msgs 里（是固件内部枚举），只能读 PX4 源码核对。
+#   MANUAL=1 ALTCTL=2 POSCTL=3 AUTO=4 ACRO=5 OFFBOARD=6 STABILIZED=7 ...
+# 写错会导致 DO_SET_MODE 被判为非法模式、nav_state 永远不进 14。
+PX4_CUSTOM_MAIN_MODE_OFFBOARD = 6
+
+# 发出 DO_SET_MODE 后等待 nav_state 变成 OFFBOARD 的最长时间（秒）。
+# 超过仍不是 14 -> 记录错误并停止后续解锁流程（不会带着"以为在 offboard"的风险起飞）。
+OFFBOARD_CONFIRM_TIMEOUT_S = 2.0
 
 
 class FlightControl(Node):
@@ -129,6 +140,8 @@ class FlightControl(Node):
         self.mode_sent_at = 0.0
         self.arm_sent = False
         self.sequence_started = False
+        self.mode_failed = False
+        self.hb_count = 0
 
         self.create_service(Trigger, "~/start", self.srv_start)
         self.create_timer(1.0 / rate, self.loop)
@@ -237,6 +250,7 @@ class FlightControl(Node):
         msg.body_rate = False
         msg.thrust_and_torque = False
         msg.direct_actuator = False
+        self.hb_count += 1
         self.pub_offboard.publish(msg)
 
     def _publish_setpoint(self, vn: float, ve: float, vz: float):
@@ -285,21 +299,41 @@ class FlightControl(Node):
         now = time.monotonic()
         if self.stream_start == 0.0:
             self.stream_start = now
-            self.get_logger().info("开始发 offboard 心跳，等待切换模式…")
+            self.get_logger().info(
+                f"开始发 offboard 心跳，需连续 {self.prestream:.1f}s 后才允许切模式…")
             return
 
-        # ④ 心跳持续 prestream 秒后才允许切模式（PX4 要求先有 setpoint 流）
-        if not self.mode_sent and (now - self.stream_start) >= self.prestream:
-            self.get_logger().info("发 DO_SET_MODE -> OFFBOARD")
+        # ④ PX4 硬性要求：先持续收到合规的 OffboardControlMode 心跳 ≥1s，才能请求 OFFBOARD。
+        #    这里除了时间，还要求确实发出过心跳帧（防止时间到了但一帧都没发）。
+        if not self.mode_sent and not self.mode_failed:
+            elapsed = now - self.stream_start
+            if elapsed < self.prestream or self.hb_count == 0:
+                return
+            self.get_logger().info(
+                f"心跳已连续 {elapsed:.1f}s / {self.hb_count} 帧 -> 发 DO_SET_MODE"
+                f"(main_mode={PX4_CUSTOM_MAIN_MODE_OFFBOARD} -> OFFBOARD)")
             self._send_vehicle_command(
                 VEHICLE_CMD_DO_SET_MODE, 1.0, float(PX4_CUSTOM_MAIN_MODE_OFFBOARD))
             self.mode_sent = True
             self.mode_sent_at = now
             return
 
-        # ⑤ 切模式后再解锁（顺序反过来 PX4 会拒绝或跳模式）
-        if self.mode_sent and not self.arm_sent and (now - self.mode_sent_at) >= 0.5:
-            self.get_logger().info("发 COMPONENT_ARM_DISARM -> 解锁")
+        # ⑤ 等 nav_state 真正变成 OFFBOARD，最多 OFFBOARD_CONFIRM_TIMEOUT_S 秒。
+        #    等不到就报错并停在这里：绝不带着"以为在 offboard"的状态去解锁。
+        if self.mode_sent and not self.offboard and not self.mode_failed:
+            waited = now - self.mode_sent_at
+            if waited >= OFFBOARD_CONFIRM_TIMEOUT_S:
+                nav = self.status.nav_state if self.status is not None else -1
+                self.get_logger().error(
+                    f"切换 OFFBOARD 失败：{waited:.1f}s 内 nav_state 仍为 {nav}"
+                    f"（期望 {NAV_STATE_OFFBOARD}），已停止解锁流程")
+                self.mode_failed = True
+                self.sequence_started = False
+            return
+
+        # ⑥ 确认处于 OFFBOARD 之后再解锁（顺序反过来 PX4 会拒绝或跳模式）
+        if self.offboard and not self.arm_sent and not self.mode_failed:
+            self.get_logger().info("已进入 OFFBOARD -> 发 COMPONENT_ARM_DISARM 解锁")
             self._send_vehicle_command(VEHICLE_CMD_COMPONENT_ARM_DISARM, 1.0, 0.0)
             self.arm_sent = True
             return
@@ -312,7 +346,11 @@ class FlightControl(Node):
         self.sequence_started = True
         self.stream_start = 0.0
         self.mode_sent = False
+        self.mode_sent_at = 0.0
         self.arm_sent = False
+        self.mode_failed = False
+        self.hb_count = 0
+        self._ready_logged = False
         response.success = True
         response.message = "起飞序列已启动"
         self.get_logger().info("收到 start，起飞序列启动")

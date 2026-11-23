@@ -42,6 +42,26 @@
 - 45° 斜降：`vz : vxy = 1 : 1`，并且要在红区上方就对准，不能到低空再修水平位。
 - 全程无人工干预，一键起飞后要能自主完成收尾与降落。
 
+## 环境基准（实测，勿凭记忆改）
+
+| 项 | 值 | 来源 |
+|---|---|---|
+| 飞控 | 雷迅 CUAV X7+ Pro | 实机 |
+| 固件 | **PX4 v1.17.0**（`board_id` 1010，git `d6f12ad1`） | 固件文件 `cuav_x7pro_default.px4` 头部元数据 |
+| `px4_msgs` | **`release/1.17`**（对应 tag `v1.17.0`） | 与固件版本对齐；两者为同一提交，5 个消息文件逐字节相同 |
+| 伴随计算机 | 鲁班猫 4（RK3588S） | 实机 |
+| 通信 | uXRCE-DDS（MicroXRCEAgent ↔ PX4 内置 client） | 设计 |
+| **状态** | **`/fmu/*` 话题尚未验证** | 待实测 |
+
+> 换固件后先读 `.px4` 文件头确认版本，再选 `px4_msgs` 分支：
+> ```python
+> import json
+> raw = open('xxx.px4','rb').read().decode('latin-1')
+> obj,_ = json.JSONDecoder().raw_decode(raw, raw.index('{'))
+> print(obj['version'], obj['git_hash'])
+> ```
+> 另外 PX4 默认 `COM_ARM_WO_GPS=0`（无 GPS 拒绝解锁），室内调试需要改成 1。
+
 ## 现状
 
 三个包，PC 上可编译、可运行（**尚未上机联飞**）：
@@ -50,12 +70,13 @@
 |---|---|
 | `uav_vision_interfaces` | 自定义消息：`Detection` / `DetectionArray` / `CellCount` / `CellReport` / `UavPose` / `GcsCommand` |
 | `uav_vision_control` | `vision_detector`（onnx / rknn 双后端）、`cell_mapper_node`（逐格计数）、`serial_bridge`（地面站串口） |
-| `uav_flight_control` | PX4 uXRCE-DDS：30Hz 心跳 + 速度 setpoint + 安全起飞序列（依赖 `px4_msgs`，需按固件版本 clone） |
+| `uav_flight_control` | PX4 uXRCE-DDS：30Hz 心跳 + 速度 setpoint + 安全起飞序列（`px4_msgs` 用 `release/1.17`） |
 
 ## 待办
 
 - [x] 选定 PX4 + uXRCE-DDS（不用 MAVROS），飞控节点已写
-- [ ] 实机跑通 uXRCE-DDS（pixhawk + MicroXRCEAgent），确认 `/fmu/*` 话题
+- [x] 安全起飞序列：心跳 ≥1s → `DO_SET_MODE(1,6)` → **2s 内确认 `nav_state==14`** → 解锁
+- [ ] 实机跑通 uXRCE-DDS（MicroXRCEAgent），确认 `/fmu/*` 话题
 - [ ] 定高环调参（120cm，气垫效应与地面效应）
 - [ ] 航线执行器 + 禁飞区绕行
 - [ ] 45° 斜降轨迹与落点精度验证

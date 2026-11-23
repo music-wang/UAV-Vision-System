@@ -12,13 +12,31 @@
 
 ## 1. 依赖与编译
 
+### 本项目锁定版本（请勿随意升级）
+
+| 项 | 值 | 依据 |
+|---|---|---|
+| PX4 固件 | **v1.17.0** | 实测固件 `cuav_x7pro_default.px4` 头部元数据 |
+| 固件目标 | CUAV X7Pro（`board_id` 1010） | 同上 |
+| git hash | `d6f12ad1c4f70ad3230afd7d86e971421e02fef4` | 同上 |
+| `px4_msgs` | **`release/1.17` 分支**（对应 tag `v1.17.0`） | 与固件版本严格对齐 |
+| 兼容性核对 | `release/1.17` 与 `v1.17.0` 为**同一提交**，5 个消息文件逐字节相同 | GitHub compare API |
+
+> 复现建议：分支会随修复前移，长期归档时同时记下 `v1.17.0` tag。
+> 换固件版本时，`.px4` 文件头就是权威依据，不用猜：
+> ```python
+> import json
+> raw = open('cuav_x7pro_default.px4','rb').read().decode('latin-1')
+> obj,_ = json.JSONDecoder().raw_decode(raw, raw.index('{'))
+> print(obj['version'], obj['git_hash'], obj['description'])
+> ```
+
 ```bash
 cd ~/UAV-Vision-System/02_control_ros2
 source /opt/ros/humble/setup.bash
 
-# px4_msgs 的分支必须和你的 PX4 固件版本一致！
-#   PX4 v1.15 -> release/1.15      PX4 v1.14 -> release/1.14
-git clone https://github.com/PX4/px4_msgs.git -b release/1.15 src/px4_msgs
+# px4_msgs 分支必须与固件版本一致：PX4 v1.17 -> release/1.17
+git clone https://github.com/PX4/px4_msgs.git -b release/1.17 src/px4_msgs
 
 colcon build --symlink-install --packages-up-to uav_flight_control
 source install/setup.bash
@@ -77,11 +95,31 @@ PX4 对 Offboard 有硬性要求：**必须先有持续的 setpoint 流，才允
 | 步 | 动作 | 代码位置 | 判据 |
 |---|---|---|---|
 | 0 | 等 `vehicle_status` 与 `vehicle_local_position` 有数据 | 订阅回调 | 两个话题都有消息 |
-| 1 | 每周期发 `OffboardControlMode(velocity=True)` 当心跳 | `_publish_offboard_mode()` | 持续 ≥ `prestream_sec`（1s） |
-| 2 | 发 `DO_SET_MODE(1, 22)` 切 Offboard | `_send_vehicle_command(176, 1, 22)` | `nav_state == 14` |
-| 3 | 发 `COMPONENT_ARM_DISARM(1)` 解锁 | `_send_vehicle_command(400, 1, 0)` | `arming_state == 2` |
-| 4 | 进入视觉控制 | `_velocity_command()` | 已解锁 且 offboard |
-| 5 | 视觉超时 / 无目标 | 返回 `(0,0,0)` | 零速度悬停 |
+| 1 | 每周期发 `OffboardControlMode(velocity=True)` 当心跳 | `_publish_offboard_mode()` | **连续 ≥ `prestream_sec`（1s）且 `hb_count > 0`** |
+| 2 | 发 `DO_SET_MODE(1, 6)` 切 Offboard | `_send_vehicle_command(176, 1, 6)` | 见第 3 步 |
+| 3 | **等 `nav_state == 14`，最多 2s** | `_safety_sequence()` 第 ⑤ 段 | 超时 → 记 error、停序列、不解锁 |
+| 4 | 确认 offboard 后发 `COMPONENT_ARM_DISARM(1)` 解锁 | `_send_vehicle_command(400, 1, 0)` | `arming_state == 2` |
+| 5 | 进入视觉控制 | `_velocity_command()` | 已解锁 且 offboard |
+| 6 | 视觉超时 / 无目标 | 返回 `(0,0,0)` | 零速度悬停 |
+
+### 为什么不改常量就直接请求切模式是不行的
+
+PX4 的要求是**两段**，缺一不可：
+
+1. **先有流**：`/fmu/in/offboard_control_mode` 必须持续至少 1 秒，PX4 才认为"客户端准备好接管"。
+   只发一条 `DO_SET_MODE`、没有心跳流，会被拒绝（`COMMAND_DENIED`）。
+2. **再切模式**：心跳满 1s 后才发 `DO_SET_MODE`，然后**必须确认** `nav_state` 真的变成 14。
+
+本节点为此做了两道保护：
+
+- 切模式前检查 `elapsed >= prestream` **且** `hb_count > 0`（时间到了但一帧没发也不许切）
+- 切模式后最多等 **2.0 s**（`OFFBOARD_CONFIRM_TIMEOUT_S`）：
+  - 等到了 → 继续解锁
+  - 等不到 → `error` 日志 + `mode_failed=True` + 停止序列，**绝不带着"以为在 offboard"的状态去解锁**
+
+> `PX4_CUSTOM_MAIN_MODE_OFFBOARD = 6` 这个值不在 `px4_msgs` 里（是固件内部枚举），
+> 只能读 PX4 源码 `src/modules/commander/px4_custom_mode.h` 核对。
+> 写成 22 之类的错值时，现象就是"心跳正常、arm 可能成功，但 `nav_state` 永远不是 14"。
 
 **为什么心跳和 setpoint 要每个周期都发**：PX4 检测到 `/fmu/in/trajectory_setpoint`
 断流超过约 0.5s 就会触发 Offboard 失效保护并自动切模式（可能直接掉落）。
